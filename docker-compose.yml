@@ -1,0 +1,10 @@
+services:
+  finprint:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: finprint:latest
+    container_name: finprint
+    ports:
+      - "5166:5166"
+    restart: unless-stopped
