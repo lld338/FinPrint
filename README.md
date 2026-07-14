@@ -137,159 +137,251 @@ npm run build
 npm run preview
 ```
 
-## Docker Compose 部署（推荐）
+## GitHub Actions 自动发布镜像
 
-项目根目录已经包含：
+仓库包含 `.github/workflows/docker-publish.yml`。工作流会自动构建 Docker 镜像并发布到 GitHub Container Registry（GHCR）：
 
-- `Dockerfile`：多阶段构建镜像；
-- `docker-compose.yml`：启动容器并映射 5166 端口；
-- `.dockerignore`：排除不需要复制到镜像的文件；
-- `deploy/nginx.conf`：Nginx 静态站点配置。
-
-### 1. 构建并启动
-
-```bash
-cd /Users/dull/my_project/FinPrint
-docker compose up -d --build
+```text
+ghcr.io/lld338/finprint:latest
 ```
 
-### 2. 查看运行状态
+工作流支持 `linux/amd64` 和 `linux/arm64`，可用于常见的 x86_64 服务器、ARM 服务器和部分 NAS。
+
+### 自动触发条件
+
+以下操作会触发镜像构建：
+
+- 推送代码到 `main` 分支；
+- 推送格式为 `v*.*.*` 的版本标签，例如 `v1.0.0`；
+- 在 GitHub 仓库的 Actions 页面中手动运行工作流。
+
+普通代码更新流程：
+
+```bash
+git add .
+git commit -m "更新功能"
+git push origin main
+```
+
+推送完成后，在 GitHub 仓库的 **Actions** 页面等待 `Build and publish Docker image` 变成绿色。成功后，`latest` 镜像会更新。
+
+### 镜像标签
+
+工作流会生成以下标签：
+
+- `latest`：`main` 分支最新构建；
+- `sha-xxxxxxx`：与具体 Git 提交对应，适合固定版本；
+- `1.2.3`、`1.2`：推送 `v1.2.3` 标签时生成。
+
+正式环境如果希望每次更新都使用最新版，可以使用 `latest`。如果希望部署结果长期固定，建议在 `docker-compose.yml` 中填写版本号或 `sha-` 标签。
+
+### 第一次发布后的 GHCR 权限
+
+GHCR 软件包第一次创建后可能不是公开状态。希望服务器无需登录即可拉取时，需要在 GitHub 中打开 FinPrint 软件包设置，将软件包可见性改为 **Public**。
+
+如果保持私有，则服务器必须先登录 GHCR。使用具有 `read:packages` 权限的 Personal Access Token：
+
+```bash
+echo "你的_TOKEN" | docker login ghcr.io -u lld338 --password-stdin
+```
+
+不要把 Token 写入 `docker-compose.yml`、README 或 Git 仓库。
+
+## Docker Compose 部署（推荐）
+
+当前 `docker-compose.yml` 不在服务器上构建源码，而是直接拉取 Actions 发布的镜像：
+
+```yaml
+services:
+  finprint:
+    image: ghcr.io/lld338/finprint:latest
+    pull_policy: always
+    container_name: finprint
+    restart: always
+    ports:
+      - "127.0.0.1:5166:5166"
+```
+
+这种方式不要求服务器安装 Node.js，也不需要在服务器运行 `npm install` 或 `docker build`。
+
+### 1. 获取部署文件
+
+可以克隆仓库：
+
+```bash
+git clone https://github.com/lld338/FinPrint.git
+cd FinPrint
+```
+
+服务器只需要 `docker-compose.yml`。克隆仓库主要是为了方便后续同步部署配置。
+
+### 2. 拉取镜像并启动
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+也可以直接执行：
+
+```bash
+docker compose up -d
+```
+
+配置中的 `pull_policy: always` 会要求 Docker Compose 检查并拉取最新镜像。正式更新时仍建议显式执行 `docker compose pull`，便于观察拉取结果。
+
+### 3. 查看状态和健康检查
 
 ```bash
 docker compose ps
 ```
 
-### 3. 查看日志
+Dockerfile 内置健康检查。正常启动一段时间后，容器状态应显示为 `healthy`。
+
+### 4. 查看日志
 
 ```bash
 docker compose logs -f finprint
 ```
 
-### 4. 访问系统
+### 5. 访问系统
 
-本机访问：
+默认端口配置为：
+
+```yaml
+ports:
+  - "127.0.0.1:5166:5166"
+```
+
+这表示只有服务器本机可以直接访问：
 
 ```text
 http://127.0.0.1:5166/
 ```
 
-同一局域网中的其他设备访问：
+推荐通过 Nginx、Caddy、宝塔等反向代理提供域名和 HTTPS。
 
-```text
-http://服务器IP:5166/
-```
-
-服务器防火墙需要允许 TCP `5166` 端口。
-
-### 5. 停止服务
-
-```bash
-docker compose stop
-```
-
-### 6. 重新启动
-
-```bash
-docker compose start
-```
-
-### 7. 停止并删除容器
-
-```bash
-docker compose down
-```
-
-删除容器不会删除浏览器中的 IndexedDB 工作内容。浏览器数据由访问页面的客户端浏览器管理，而不是保存在 Docker 容器中。
-
-### 8. 更新代码后重新部署
-
-```bash
-docker compose up -d --build
-```
-
-如果希望强制重新构建且不使用旧的 Docker 构建缓存：
-
-```bash
-docker compose build --no-cache
-docker compose up -d
-```
-
-## 直接使用 Docker 部署
-
-如果不使用 Docker Compose，可以手动构建镜像：
-
-```bash
-docker build -t finprint:latest .
-```
-
-启动容器：
-
-```bash
-docker run -d \
-  --name finprint \
-  --restart unless-stopped \
-  -p 5166:5166 \
-  finprint:latest
-```
-
-查看容器状态：
-
-```bash
-docker ps --filter name=finprint
-```
-
-查看健康状态：
-
-```bash
-docker inspect --format='{{json .State.Health}}' finprint
-```
-
-查看日志：
-
-```bash
-docker logs -f finprint
-```
-
-停止并删除容器：
-
-```bash
-docker stop finprint
-docker rm finprint
-```
-
-## 修改宿主机访问端口
-
-容器内部固定监听 `5166`。如果宿主机的 `5166` 已被占用，可以只修改端口映射，不需要修改应用代码或 Nginx 配置。
-
-例如，把宿主机端口改成 `8080`：
+如果需要让局域网中的其他设备直接访问，将端口改为：
 
 ```yaml
 ports:
-  - "8080:5166"
+  - "5166:5166"
 ```
 
 然后访问：
 
 ```text
+http://服务器IP:5166/
+```
+
+### 6. 更新服务器上的 FinPrint
+
+代码推送到 `main` 并且 GitHub Actions 构建成功后，在服务器执行：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Docker Compose 会拉取新的 `latest` 镜像并重新创建容器。浏览器中的报销文件和拼版状态保存在客户端 IndexedDB 中，正常更换容器不会清除这些内容。
+
+查看当前容器使用的镜像：
+
+```bash
+docker inspect --format='{{.Config.Image}}' finprint
+```
+
+### 7. 停止或删除容器
+
+停止服务：
+
+```bash
+docker compose stop
+```
+
+重新启动：
+
+```bash
+docker compose start
+```
+
+停止并删除容器：
+
+```bash
+docker compose down
+```
+
+## 发布版本标签
+
+如果准备发布 `v1.0.0`：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Actions 会发布：
+
+```text
+ghcr.io/lld338/finprint:1.0.0
+ghcr.io/lld338/finprint:1.0
+```
+
+服务器可以固定使用该版本：
+
+```yaml
+services:
+  finprint:
+    image: ghcr.io/lld338/finprint:1.0.0
+```
+
+固定版本不会自动切换到新的 `latest`，更适合需要可控升级和快速回滚的正式环境。
+
+## 本地构建 Docker 镜像
+
+GitHub Actions 使用项目根目录中的 `Dockerfile`。开发人员也可以在本地构建：
+
+```bash
+docker build -t finprint:local .
+```
+
+运行本地镜像：
+
+```bash
+docker run -d \
+  --name finprint-local \
+  --restart unless-stopped \
+  -p 5166:5166 \
+  finprint:local
+```
+
+本地构建主要用于开发验证；正式服务器推荐直接拉取 GHCR 镜像。
+
+## 修改宿主机访问端口
+
+容器内部固定监听 `5166`。例如，把宿主机本地端口改成 `8080`：
+
+```yaml
+ports:
+  - "127.0.0.1:8080:5166"
+```
+
+访问地址变为：
+
+```text
 http://127.0.0.1:8080/
 ```
 
-直接运行 Docker 时对应命令为：
-
-```bash
-docker run -d --name finprint -p 8080:5166 finprint:latest
-```
-
-注意：端口变化会改变浏览器网站来源。原来保存在 `127.0.0.1:5166` 下的工作内容，不会自动出现在 `127.0.0.1:8080` 下。
+注意：端口或域名变化会改变浏览器网站来源。原来保存在 `127.0.0.1:5166` 下的 IndexedDB 工作内容，不会自动出现在新地址下。
 
 ## Docker 镜像工作方式
 
 `Dockerfile` 使用两阶段构建：
 
 1. `node:22-alpine` 执行 `npm ci` 和 `npm run build`；
-2. `nginx:1.27-alpine` 只复制最终的 `dist/` 静态文件并在 `5166` 端口提供服务。
+2. `nginx:1.27-alpine` 只复制最终的 `dist/` 静态文件并监听 `5166`。
 
-因此最终运行容器中不包含 Node.js 开发服务器，也不会在容器内保存用户 PDF。
+最终运行容器不包含 Node.js 开发服务器，也不会在容器中保存用户 PDF。
 
 Nginx 配置包括：
 
@@ -360,6 +452,9 @@ ports:
 
 ```text
 FinPrint/
+├── .github/
+│   └── workflows/
+│       └── docker-publish.yml # Actions 自动构建并发布 GHCR 镜像
 ├── deploy/
 │   └── nginx.conf          # Docker 容器中的 Nginx 配置
 ├── src/
@@ -389,7 +484,8 @@ FinPrint/
 - pdf-lib
 - Vitest
 - Nginx
-- Docker
+- Docker / Docker Compose
+- GitHub Actions / GHCR
 
 ## License
 

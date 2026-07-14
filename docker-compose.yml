@@ -1,10 +1,9 @@
 services:
   finprint:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: finprint:latest
+    image: ghcr.io/lld338/finprint:latest
+    pull_policy: always
     container_name: finprint
+    restart: always
     ports:
-      - "5166:5166"
-    restart: unless-stopped
+      # 默认只允许宿主机本机访问，适合配合 Nginx、Caddy 或宝塔反向代理。
+      - "127.0.0.1:5166:5166"
