@@ -5,6 +5,14 @@ const DATABASE_VERSION = 1;
 const STORE_NAME = 'workspace';
 const STATE_KEY = 'current';
 
+let workspaceWriteQueue: Promise<void> = Promise.resolve();
+
+function enqueueWorkspaceWrite(operation: () => Promise<void>): Promise<void> {
+  const result = workspaceWriteQueue.then(operation, operation);
+  workspaceWriteQueue = result.catch(() => undefined);
+  return result;
+}
+
 export interface PersistedWorkspace {
   version: 1;
   layoutDefaultsVersion?: 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
@@ -43,7 +51,7 @@ export async function loadWorkspace(): Promise<PersistedWorkspace | null> {
   }
 }
 
-export async function saveWorkspace(workspace: PersistedWorkspace): Promise<void> {
+async function writeWorkspace(workspace: PersistedWorkspace): Promise<void> {
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -58,7 +66,7 @@ export async function saveWorkspace(workspace: PersistedWorkspace): Promise<void
   }
 }
 
-export async function clearWorkspace(): Promise<void> {
+async function deleteWorkspace(): Promise<void> {
   const database = await openDatabase();
   try {
     await new Promise<void>((resolve, reject) => {
@@ -71,4 +79,12 @@ export async function clearWorkspace(): Promise<void> {
   } finally {
     database.close();
   }
+}
+
+export function saveWorkspace(workspace: PersistedWorkspace): Promise<void> {
+  return enqueueWorkspaceWrite(() => writeWorkspace(workspace));
+}
+
+export function clearWorkspace(): Promise<void> {
+  return enqueueWorkspaceWrite(deleteWorkspace);
 }

@@ -282,3 +282,13 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
+
+.confirm-backdrop { position: fixed; inset: 0; z-index: 110; display: grid; place-items: center; padding: 20px; background: rgba(20, 28, 42, 0.45); backdrop-filter: blur(2px); }
+.confirm-dialog { width: min(92vw, 420px); padding: 22px; display: grid; grid-template-columns: auto 1fr; gap: 14px; border: 1px solid #e6d4d4; border-radius: 14px; background: #fff; box-shadow: 0 24px 70px rgba(23, 30, 43, 0.28); animation: confirm-in 160ms ease-out; }
+.confirm-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; color: #b83737; background: #fff0f0; }
+.confirm-copy h2 { margin: 1px 0 6px; color: #27344a; font-size: 17px; }
+.confirm-copy p { margin: 0; color: #667388; font-size: 12px; line-height: 1.65; }
+.confirm-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 9px; margin-top: 7px; }
+.button.confirm-danger { color: #fff; background: #c83d3d; border-color: #c83d3d; box-shadow: 0 5px 13px rgba(200, 61, 61, 0.2); }
+.button.confirm-danger:hover:not(:disabled) { background: #b83232; border-color: #b83232; }
+@keyframes confirm-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }

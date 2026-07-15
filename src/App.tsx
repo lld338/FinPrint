@@ -170,6 +170,7 @@ function App() {
   const [draggingFileId, setDraggingFileId] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [loadedLayoutDefaultsVersion, setLoadedLayoutDefaultsVersion] = useState<number | null>(null);
+  const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false);
 
   const selectedIndex = Math.max(0, sheets.findIndex((sheet) => sheet.id === selectedSheetId));
   const selectedSheet = sheets[selectedIndex] ?? null;
@@ -292,6 +293,15 @@ function App() {
       selectedSlotIndex,
     }).catch(() => setToast('本次修改未能保存到浏览器'));
   }, [files, loadedLayoutDefaultsVersion, selectedSheetId, selectedSlotIndex, sheets, workspaceReady]);
+
+  useEffect(() => {
+    if (!clearConfirmationOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setClearConfirmationOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [clearConfirmationOpen]);
 
   function notify(message: string) {
     setToast(message);
@@ -510,10 +520,14 @@ function App() {
     notify('已按打印尺寸重新智能排版');
   }
 
-  async function clearAllContent() {
+  function requestClearAllContent() {
     if (!files.length && !sheets.length) return;
-    if (!window.confirm('确定清掉所有报销文件和拼版内容吗？此操作不能撤销。')) return;
+    setClearConfirmationOpen(true);
+  }
 
+  async function clearAllContent() {
+    setClearConfirmationOpen(false);
+    setBusy('正在清空所有内容…');
     try {
       await Promise.all([clearWorkspace(), clearGeneratedPrintFiles()]);
       setFiles([]);
@@ -524,6 +538,8 @@ function App() {
       notify('已清掉所有内容');
     } catch (error) {
       notify(error instanceof Error ? error.message : '清空失败，请重试');
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -541,7 +557,7 @@ function App() {
           <button
             className="button ghost clear-all"
             type="button"
-            onClick={() => void clearAllContent()}
+            onClick={requestClearAllContent}
             disabled={!!busy || (!files.length && !sheets.length)}
           >
             <Trash2 size={17} /> 清空全部
@@ -845,6 +861,29 @@ function App() {
           )}
         </aside>
       </main>
+
+      {clearConfirmationOpen && (
+        <div className="confirm-backdrop" role="presentation" onMouseDown={() => setClearConfirmationOpen(false)}>
+          <section
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="clear-confirm-title"
+            aria-describedby="clear-confirm-description"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-icon"><Trash2 size={22} /></div>
+            <div className="confirm-copy">
+              <h2 id="clear-confirm-title">清空所有内容？</h2>
+              <p id="clear-confirm-description">所有报销材料和拼版设置都会被删除，此操作不能撤销。</p>
+            </div>
+            <div className="confirm-actions">
+              <button className="button ghost" type="button" onClick={() => setClearConfirmationOpen(false)}>取消</button>
+              <button className="button confirm-danger" type="button" onClick={() => void clearAllContent()}>确认清空</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {busy && <div className="busy-overlay" role="status"><LoaderCircle className="spinner" size={22} /><span>{busy}</span></div>}
       {toast && <div className="toast" role="status"><CheckCircle2 size={18} />{toast}</div>}
