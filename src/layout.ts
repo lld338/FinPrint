@@ -21,6 +21,43 @@ export function outputPageDimensionsPt(orientation: Orientation): [number, numbe
   return paperDimensionsPt('A4', orientation);
 }
 
+
+export const A5_SOURCE_ROTATION_DEGREES = -90;
+
+export function shouldRotateSourceForPrint(paper: PaperSize, sourceWidth: number, sourceHeight: number): boolean {
+  return paper === 'A5' && sourceHeight > sourceWidth;
+}
+
+export function dimensionsAfterQuarterTurn(
+  sourceWidth: number,
+  sourceHeight: number,
+  rotate: boolean,
+): [number, number] {
+  return rotate ? [sourceHeight, sourceWidth] : [sourceWidth, sourceHeight];
+}
+
+export function sourceDimensionsForPrint(
+  paper: PaperSize,
+  sourceWidth: number,
+  sourceHeight: number,
+): [number, number] {
+  return dimensionsAfterQuarterTurn(
+    sourceWidth,
+    sourceHeight,
+    shouldRotateSourceForPrint(paper, sourceWidth, sourceHeight),
+  );
+}
+
+export function placementAfterQuarterTurn(placement: Rect) {
+  return {
+    x: placement.x,
+    y: placement.y + placement.height,
+    width: placement.height,
+    height: placement.width,
+    rotation: A5_SOURCE_ROTATION_DEGREES,
+  };
+}
+
 export function slotCount(layout: LayoutMode): number {
   return layout === 'full' ? 1 : 2;
 }
@@ -34,12 +71,15 @@ export function calculateSlots(
   splitPercent: number,
 ): Rect[] {
   const [pageWidth, pageHeight] = outputPageDimensionsPt(orientation);
-  const [printWidth, printHeight] = paperDimensionsPt(paper, orientation);
+  // A5 打印方式固定使用横版内容区，但实体输出页仍由 A4 纸方向决定。
+  const printOrientation: Orientation = paper === 'A5' ? 'landscape' : orientation;
+  const [printWidth, printHeight] = paperDimensionsPt(paper, printOrientation);
   const margin = marginMm * MM_TO_PT;
   const gap = gapMm * MM_TO_PT;
   // A5 打印方式是在 A4 实体纸张中保留一个标准 A5 区域；A4 则覆盖整张纸。
-  const printAreaX = (pageWidth - printWidth) / 2;
-  const printAreaY = (pageHeight - printHeight) / 2;
+  const printAreaX = paper === 'A5' ? 0 : (pageWidth - printWidth) / 2;
+  // 正确的 A5 模式：A4 纵向纸的上半页是一块 210 × 148 mm 的 A5 横版区域。
+  const printAreaY = paper === 'A5' ? pageHeight - printHeight : (pageHeight - printHeight) / 2;
   const x = printAreaX + margin;
   const y = printAreaY + margin;
   const width = Math.max(1, printWidth - margin * 2);

@@ -1,7 +1,7 @@
-import { PDFDocument, StandardFonts, clip, endPath, popGraphicsState, pushGraphicsState, rectangle, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, clip, degrees, endPath, popGraphicsState, pushGraphicsState, rectangle, rgb } from 'pdf-lib';
 import { getDocument } from 'pdfjs-dist';
 import { getImportFileKind } from './files';
-import { calculateSlots, calculateSourceCropBox, fitIntoRect, outputPageDimensionsPt } from './layout';
+import { calculateSlots, calculateSourceCropBox, dimensionsAfterQuarterTurn, fitIntoRect, outputPageDimensionsPt, placementAfterQuarterTurn, shouldRotateSourceForPrint } from './layout';
 import type { PageReference, SheetConfig, UploadedPdf } from './types';
 
 
@@ -281,9 +281,11 @@ export async function buildPrintPdf(files: UploadedPdf[], sheets: SheetConfig[])
         sourcePage,
         calculateSourceCropBox(visibleBox, contentHeight, shouldTrimBottom),
       );
+      const rotateSource = shouldRotateSourceForPrint(sheet.paper, embedded.width, embedded.height);
+      const [printSourceWidth, printSourceHeight] = dimensionsAfterQuarterTurn(embedded.width, embedded.height, rotateSource);
       const placement = fitIntoRect(
-        embedded.width,
-        embedded.height,
+        printSourceWidth,
+        printSourceHeight,
         rects[index],
         slot.fit,
         slot.scale,
@@ -298,7 +300,14 @@ export async function buildPrintPdf(files: UploadedPdf[], sheets: SheetConfig[])
         clip(),
         endPath(),
       );
-      outputPage.drawPage(embedded, placement);
+      const rotatedPlacement = placementAfterQuarterTurn(placement);
+      outputPage.drawPage(embedded, rotateSource ? {
+        x: rotatedPlacement.x,
+        y: rotatedPlacement.y,
+        width: rotatedPlacement.width,
+        height: rotatedPlacement.height,
+        rotate: degrees(rotatedPlacement.rotation),
+      } : placement);
       outputPage.pushOperators(popGraphicsState());
     }
   }

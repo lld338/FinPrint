@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateHorizontalAlignmentOffset, calculateSlots, calculateSourceCropBox, fitIntoRect, outputPageDimensionsPt, paperDimensionsPt } from './layout';
+import { A5_SOURCE_ROTATION_DEGREES, calculateHorizontalAlignmentOffset, calculateSlots, calculateSourceCropBox, fitIntoRect, outputPageDimensionsPt, paperDimensionsPt, placementAfterQuarterTurn, shouldRotateSourceForPrint, sourceDimensionsForPrint } from './layout';
 
 describe('print layout', () => {
   it('creates two equal vertical A4 slots at 50%', () => {
@@ -23,15 +23,34 @@ describe('print layout', () => {
     expect(height).toBeCloseTo(841.89, 1);
   });
 
-  it('centers a complete standard A5 print area on the A4 output page', () => {
-    const [pageWidth, pageHeight] = outputPageDimensionsPt('portrait');
-    const [width, height] = paperDimensionsPt('A5', 'portrait');
+  it('places a complete A5 landscape print area on the upper half of an A4 portrait page', () => {
+    const [, pageHeight] = outputPageDimensionsPt('portrait');
+    const [width, height] = paperDimensionsPt('A5', 'landscape');
     const [slot] = calculateSlots('A5', 'portrait', 'full', 0, 0, 50);
     expect(slot).toEqual({
-      x: (pageWidth - width) / 2,
-      y: (pageHeight - height) / 2,
+      x: 0,
+      y: pageHeight - height,
       width,
       height,
+    });
+  });
+
+  it('rotates portrait source pages for A5 landscape printing', () => {
+    expect(shouldRotateSourceForPrint('A5', 595.28, 841.89)).toBe(true);
+    expect(sourceDimensionsForPrint('A5', 595.28, 841.89)).toEqual([841.89, 595.28]);
+    expect(shouldRotateSourceForPrint('A4', 595.28, 841.89)).toBe(false);
+    expect(shouldRotateSourceForPrint('A5', 841.89, 595.28)).toBe(false);
+    expect(shouldRotateSourceForPrint('A5', 595.28, 400)).toBe(false);
+  });
+
+  it('rotates A5 portrait sources clockwise into the upper landscape area', () => {
+    expect(A5_SOURCE_ROTATION_DEGREES).toBe(-90);
+    expect(placementAfterQuarterTurn({ x: 10, y: 20, width: 30, height: 40 })).toEqual({
+      x: 10,
+      y: 60,
+      width: 40,
+      height: 30,
+      rotation: -90,
     });
   });
 
