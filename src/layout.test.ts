@@ -58,7 +58,7 @@ describe('print layout', () => {
     });
   });
 
-  it('uses the selected direction for A4 and an A4 landscape carrier for A5', () => {
+  it('uses the selected direction for both A4 and A5 output carriers', () => {
     expect(outputPageDimensionsPt('A4', 'portrait')).toEqual([
       210 * MM_TO_PT,
       297 * MM_TO_PT,
@@ -68,8 +68,8 @@ describe('print layout', () => {
       210 * MM_TO_PT,
     ]);
     expect(outputPageDimensionsPt('A5', 'portrait')).toEqual([
-      297 * MM_TO_PT,
       210 * MM_TO_PT,
+      297 * MM_TO_PT,
     ]);
     expect(outputPageDimensionsPt('A5', 'landscape')).toEqual([
       297 * MM_TO_PT,
@@ -77,12 +77,12 @@ describe('print layout', () => {
     ]);
   });
 
-  it('places A5 portrait at the left of an A4 landscape output page', () => {
+  it('places A5 portrait at the top of an A4 portrait output page', () => {
     const content = outputContentRectPt('A5', 'portrait');
     const slot = calculateOutputSlots('A5', 'portrait', 'full', 0, 0, 50)[0];
 
     expect(content.x).toBe(0);
-    expect(content.y).toBeCloseTo(0);
+    expect(content.y).toBeCloseTo(87 * MM_TO_PT);
     expect(content.width).toBeCloseTo(148 * MM_TO_PT);
     expect(content.height).toBeCloseTo(210 * MM_TO_PT);
     expect(slot.x).toBe(0);
@@ -91,12 +91,13 @@ describe('print layout', () => {
     expect(slot.height).toBeCloseTo(content.height);
   });
 
-  it('places A5 landscape at the left and vertically centered on A4 landscape', () => {
+  it('places A5 landscape at the top-left of an A4 landscape output page', () => {
     const content = outputContentRectPt('A5', 'landscape');
     const slot = calculateOutputSlots('A5', 'landscape', 'full', 0, 0, 50)[0];
 
+    // A4 landscape height 210mm − A5 landscape height 148mm = 62mm from bottom → top-aligned.
     expect(content.x).toBe(0);
-    expect(content.y).toBeCloseTo(31 * MM_TO_PT);
+    expect(content.y).toBeCloseTo(62 * MM_TO_PT);
     expect(content.width).toBeCloseTo(210 * MM_TO_PT);
     expect(content.height).toBeCloseTo(148 * MM_TO_PT);
     expect(slot.x).toBe(0);
@@ -151,6 +152,7 @@ describe('print layout', () => {
     expect(result.width / MM_TO_PT).toBeCloseTo(148, 1);
     expect(result.height / MM_TO_PT).toBeCloseTo(209.31, 1);
     expect(result.x).toBeCloseTo(0);
-    expect(result.y / MM_TO_PT).toBeCloseTo((210 - 209.31) / 2, 1);
+    expect(result.y / MM_TO_PT).toBeCloseTo(87 + (210 - 209.31) / 2, 1);
   });
+
 });

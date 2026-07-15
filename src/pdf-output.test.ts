@@ -13,7 +13,6 @@ async function createSourceFile(): Promise<UploadedPdf> {
     id: 'source',
     name: 'source.pdf',
     bytes: arrayBuffer,
-    printAs: 'A5',
     pages: [{
       width: 595.28,
       height: 841.89,
@@ -47,7 +46,7 @@ function createSheet(paper: PaperSize, orientation: Orientation): SheetConfig {
 }
 
 describe('PDF output paper', () => {
-  it('exports A4 in its selected direction and all A5 layouts on A4 landscape pages', async () => {
+  it('exports A4 and A5 carriers in their selected directions', async () => {
     const file = await createSourceFile();
     const sheets = [
       createSheet('A4', 'portrait'),
@@ -61,8 +60,8 @@ describe('PDF output paper', () => {
     expect(output.getPageCount()).toBe(4);
     expect(output.getPage(0).getWidth()).toBeCloseTo(595.28, 1);
     expect(output.getPage(0).getHeight()).toBeCloseTo(841.89, 1);
-    expect(output.getPage(1).getWidth()).toBeCloseTo(841.89, 1);
-    expect(output.getPage(1).getHeight()).toBeCloseTo(595.28, 1);
+    expect(output.getPage(1).getWidth()).toBeCloseTo(595.28, 1);
+    expect(output.getPage(1).getHeight()).toBeCloseTo(841.89, 1);
     expect(output.getPage(2).getWidth()).toBeCloseTo(841.89, 1);
     expect(output.getPage(2).getHeight()).toBeCloseTo(595.28, 1);
     expect(output.getPage(3).getWidth()).toBeCloseTo(841.89, 1);

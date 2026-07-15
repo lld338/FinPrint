@@ -3,7 +3,6 @@ export type Orientation = 'portrait' | 'landscape';
 export type LayoutMode = 'full' | 'vertical' | 'horizontal';
 export type FitMode = 'contain' | 'stretch';
 export type CropMode = 'auto' | 'full';
-export type PrintMode = 'auto' | 'half' | PaperSize;
 export type SourceFileType = 'pdf' | 'image';
 
 export interface PageBox {
@@ -27,7 +26,6 @@ export interface UploadedPdf {
   name: string;
   bytes: ArrayBuffer;
   pages: PdfPageInfo[];
-  printAs: PrintMode;
   // 旧版 IndexedDB 数据没有此字段，缺省时按 PDF 处理。
   sourceType?: SourceFileType;
 }

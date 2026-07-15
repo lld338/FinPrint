@@ -26,7 +26,7 @@ import { calculateHorizontalAlignmentOffset, calculateSlots, fitIntoRect, paperD
 import { buildPrintPdf, createDemoFiles, inspectImportFile, inspectPdf } from './pdf';
 import { clearGeneratedPrintFiles, createPrintUrl } from './print';
 import { clearWorkspace, loadWorkspace, saveWorkspace } from './storage';
-import { CURRENT_LAYOUT_DEFAULTS_VERSION, restoreLegacyA5PortraitSheets } from './workspace';
+import { CURRENT_LAYOUT_DEFAULTS_VERSION, restoreWorkspaceSheets } from './workspace';
 import type {
   CropMode,
   FitMode,
@@ -87,11 +87,12 @@ function createSheet(
   layout: LayoutMode = 'vertical',
   paper: PaperSize = 'A4',
   sources: Array<PageReference | null> = [],
+  orientation: Orientation = 'portrait',
 ): SheetConfig {
   return {
     id: crypto.randomUUID(),
     paper,
-    orientation: 'portrait',
+    orientation,
     layout,
     margin: layout === 'full' ? 0 : 6,
     gap: layout === 'full' ? 0 : 4,
@@ -106,11 +107,15 @@ function isA5Page(width: number, height: number) {
   return Math.abs(short - 419.53) / 419.53 < 0.08 && Math.abs(long - 595.28) / 595.28 < 0.08;
 }
 
-function detectedPaper(width: number, height: number) {
-  if (isA5Page(width, height)) return 'A5';
+function isA4Page(width: number, height: number) {
   const short = Math.min(width, height);
   const long = Math.max(width, height);
-  if (Math.abs(short - 595.28) / 595.28 < 0.08 && Math.abs(long - 841.89) / 841.89 < 0.08) return 'A4';
+  return Math.abs(short - 595.28) / 595.28 < 0.08 && Math.abs(long - 841.89) / 841.89 < 0.08;
+}
+
+function detectedPaper(width: number, height: number) {
+  if (isA5Page(width, height)) return 'A5';
+  if (isA4Page(width, height)) return 'A4';
   return '自定义';
 }
 
@@ -120,6 +125,11 @@ function pageSizeMmLabel(width: number, height: number) {
   return `${widthMm} × ${heightMm} mm`;
 }
 
+function pageOrientation(width: number, height: number): Orientation {
+  return width > height ? 'landscape' : 'portrait';
+}
+
+// 智能排版只看 PDF 页面尺寸，不按文件名做任何业务预设。
 function autoLayout(files: UploadedPdf[]): SheetConfig[] {
   const regular: PageReference[] = [];
   const result: SheetConfig[] = [];
@@ -127,11 +137,13 @@ function autoLayout(files: UploadedPdf[]): SheetConfig[] {
   files.forEach((file) => {
     file.pages.forEach((page, pageIndex) => {
       const reference = { fileId: file.id, pageIndex };
-      if (file.printAs === 'A5' || (file.printAs === 'auto' && isA5Page(page.width, page.height))) {
-        result.push(createSheet('full', 'A5', [reference]));
-      } else if (file.printAs === 'A4') {
-        result.push(createSheet('full', 'A4', [reference]));
+      const orientation = pageOrientation(page.width, page.height);
+      if (isA5Page(page.width, page.height)) {
+        result.push(createSheet('full', 'A5', [reference], orientation));
+      } else if (isA4Page(page.width, page.height)) {
+        result.push(createSheet('full', 'A4', [reference], orientation));
       } else {
+        // 非标准 A4/A5 页面：两两放入 A4 上下联，便于自定义尺寸材料拼版。
         regular.push(reference);
       }
     });
@@ -169,7 +181,6 @@ function App() {
   const [dragActive, setDragActive] = useState(false);
   const [draggingFileId, setDraggingFileId] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
-  const [loadedLayoutDefaultsVersion, setLoadedLayoutDefaultsVersion] = useState<number | null>(null);
   const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false);
 
   const selectedIndex = Math.max(0, sheets.findIndex((sheet) => sheet.id === selectedSheetId));
@@ -223,26 +234,11 @@ function App() {
     void loadWorkspace()
       .then((workspace) => {
         if (cancelled) return;
-        if (!workspace || workspace.version !== 1) {
-          setLoadedLayoutDefaultsVersion(CURRENT_LAYOUT_DEFAULTS_VERSION);
-          return;
-        }
-        // 保留早期 A5 整页边距修正，并把旧版误存为 A5 横版的纵向整页恢复为纵版。
-        // 只调整逻辑方向；材料、裁切和缩放保留，对齐按钮产生的偏移会按新纸张重新映射。
-        const sheetsWithRestoredMargins = workspace.sheets.map((sheet) => ({
-          ...sheet,
-          margin: (workspace.layoutDefaultsVersion ?? 0) < 3
-            && sheet.paper === 'A5'
-            && sheet.layout === 'full'
-            && sheet.margin === 6
-            ? 0
-            : sheet.margin,
-        }));
-        const storedLayoutDefaultsVersion = workspace.layoutDefaultsVersion ?? 0;
-        const restoredSheets = restoreLegacyA5PortraitSheets(
-          workspace.files,
-          sheetsWithRestoredMargins,
-          storedLayoutDefaultsVersion,
+        if (!workspace || workspace.version !== 1) return;
+        // 旧数据只修复最早的 A5 整页默认边距；用户选择的方向和版式原样恢复。
+        const restoredSheets = restoreWorkspaceSheets(
+          workspace.sheets,
+          workspace.layoutDefaultsVersion ?? 0,
         );
         setFiles(workspace.files);
         setSheets(restoredSheets);
@@ -255,7 +251,6 @@ function App() {
             : restoredSheets[0]?.id ?? null,
         );
         setSelectedSlotIndex(Math.max(0, workspace.selectedSlotIndex));
-        setLoadedLayoutDefaultsVersion(storedLayoutDefaultsVersion);
       })
       .catch(() => {
         if (!cancelled) setToast('未能恢复上次内容，可继续正常使用');
@@ -270,20 +265,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!workspaceReady || loadedLayoutDefaultsVersion === null) return;
-
-    if (loadedLayoutDefaultsVersion < CURRENT_LAYOUT_DEFAULTS_VERSION) {
-      // Fast Refresh 可能保留旧 React 状态；在写入新版本号之前再对当前状态执行一次迁移，
-      // 避免旧的 A5 横版状态抢先覆盖已经迁移好的 IndexedDB 数据。
-      const restoredSheets = restoreLegacyA5PortraitSheets(files, sheets, loadedLayoutDefaultsVersion);
-      if (restoredSheets !== sheets) {
-        setSheets(restoredSheets);
-        return;
-      }
-      setLoadedLayoutDefaultsVersion(CURRENT_LAYOUT_DEFAULTS_VERSION);
-      return;
-    }
-
+    if (!workspaceReady) return;
     void saveWorkspace({
       version: 1,
       layoutDefaultsVersion: CURRENT_LAYOUT_DEFAULTS_VERSION,
@@ -292,7 +274,7 @@ function App() {
       selectedSheetId,
       selectedSlotIndex,
     }).catch(() => setToast('本次修改未能保存到浏览器'));
-  }, [files, loadedLayoutDefaultsVersion, selectedSheetId, selectedSlotIndex, sheets, workspaceReady]);
+  }, [files, selectedSheetId, selectedSlotIndex, sheets, workspaceReady]);
 
   useEffect(() => {
     if (!clearConfirmationOpen) return;
@@ -756,7 +738,7 @@ function App() {
                     <button type="button" className={selectedSheet.orientation === value ? 'active' : ''} key={value} onClick={() => updateSelectedSheet({ orientation: value })}>{label}</button>
                   ))}
                 </div>
-                <div className="position-hint">纸张和方向只改变编辑版面；原稿文字不会旋转。A5 导出时统一放到 A4 横向承载页左侧。</div>
+                <div className="position-hint">纸张和方向只改变编辑版面；原稿文字不会旋转。A5 导出时按对应方向放到 A4 左上角（左齐、顶齐）。</div>
               </fieldset>
 
               <fieldset className="setting-group">
@@ -836,7 +818,7 @@ function App() {
                             );
                           })}
                         </div>
-                        <div className="position-hint">可快速将内容在当前版位内靠左、居中或靠右，再用偏移量微调。</div>
+                        <div className="position-hint">控制原稿内容在当前版位内靠左、居中或靠右，02 拼版预览会立即显示变化。</div>
                       </>
                     )}
                     <div className="inline-fields">
@@ -856,8 +838,8 @@ function App() {
                   <strong>打印建议</strong>
                   <span>{selectedSheet.paper === 'A5'
                     ? selectedSheet.orientation === 'portrait'
-                      ? '最终输出为 A4 横向页，A5 竖版保持原尺寸放在左侧并占满纸张高度；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
-                      : '最终输出为 A4 横向页，A5 横版保持原尺寸放在左侧并垂直居中；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
+                      ? '最终输出为 A4 纵向页，A5 竖版保持原尺寸放在左上角（左齐、顶齐）；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
+                      : '最终输出为 A4 横向页，A5 横版保持原尺寸放在左上角（左齐、顶齐）；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
                     : `最终输出为标准 A4 ${selectedSheet.orientation === 'portrait' ? '纵向' : '横向'}页。打印时请选择 A4 和“实际大小 / 100%”，不要再次缩放。`}</span>
                 </div>
               </div>

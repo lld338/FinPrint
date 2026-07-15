@@ -122,13 +122,7 @@ export async function inspectPdf(file: File): Promise<UploadedPdf> {
     name: file.name,
     bytes,
     pages,
-    // 按当前报销业务规则给常用材料预设打印方式。
     sourceType: 'pdf',
-    printAs: file.name.includes('杜乐乐提交的费用报销')
-      ? 'A5'
-      : /滴滴电子发票|滴滴出行行程报销单/.test(file.name)
-        ? 'half'
-        : 'auto',
   };
 }
 
@@ -234,8 +228,6 @@ export async function inspectImportFile(file: File): Promise<UploadedPdf> {
     ...inspected,
     name: file.name,
     sourceType: 'image',
-    // 图片没有可靠的物理纸张尺寸，默认作为普通材料参与 A4 上下拼版。
-    printAs: 'auto',
   };
 }
 
@@ -307,10 +299,11 @@ export async function buildPrintPdf(files: UploadedPdf[], sheets: SheetConfig[])
 }
 
 export async function createDemoFiles(): Promise<File[]> {
+  // 演示文件仅用于预览布局，文件名不参与任何排版规则。
   const specs = [
-    { name: '滴滴电子发票_37486_566.pdf', width: 595.28, height: 841.89, title: 'DIDI ELECTRONIC INVOICE', accent: rgb(0.15, 0.42, 0.78) },
-    { name: '滴滴出行行程报销单_43821_446.pdf', width: 595.28, height: 841.89, title: 'DIDI TRIP REIMBURSEMENT', accent: rgb(0.06, 0.56, 0.48) },
-    { name: '杜乐乐提交的费用报销.pdf', width: 419.53, height: 595.28, title: 'EXPENSE REIMBURSEMENT / A5', accent: rgb(0.48, 0.27, 0.78) },
+    { name: 'demo-a4-portrait-1.pdf', width: 595.28, height: 841.89, title: 'SAMPLE A4 PORTRAIT 1', accent: rgb(0.15, 0.42, 0.78) },
+    { name: 'demo-a4-portrait-2.pdf', width: 595.28, height: 841.89, title: 'SAMPLE A4 PORTRAIT 2', accent: rgb(0.06, 0.56, 0.48) },
+    { name: 'demo-a5-portrait.pdf', width: 419.53, height: 595.28, title: 'SAMPLE A5 PORTRAIT', accent: rgb(0.48, 0.27, 0.78) },
   ];
   const files: File[] = [];
 

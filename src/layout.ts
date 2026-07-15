@@ -1,4 +1,4 @@
-import type { LayoutMode, Orientation, PageBox, PaperSize, Rect } from './types';
+import type { FitMode, LayoutMode, Orientation, PageBox, PaperSize, Rect } from './types';
 
 export const MM_TO_PT = 72 / 25.4;
 export const PAPER_MM: Record<PaperSize, [number, number]> = {
@@ -16,10 +16,10 @@ export function paperDimensionsPt(paper: PaperSize, orientation: Orientation): [
   return [width * MM_TO_PT, height * MM_TO_PT];
 }
 
-// 最终打印文件统一使用 A4 实体页。A4 跟随自身方向；A5 为了同时容纳
-// 148 × 210 mm 竖版和 210 × 148 mm 横版，统一放在 A4 横向承载页左侧。
+// 最终打印文件统一使用 A4 实体页。A4 跟随自身方向；A5 也跟随所选
+// 逻辑方向：A5 纵向放到 A4 纵向，A5 横向放到 A4 横向。
 export function outputPageDimensionsPt(paper: PaperSize, orientation: Orientation): [number, number] {
-  return paperDimensionsPt('A4', paper === 'A5' ? 'landscape' : orientation);
+  return paperDimensionsPt('A4', orientation);
 }
 
 // 编辑与预览使用真正的 A4/A5 逻辑版面；导出时再把完整逻辑版面平移到 A4 承载页。
@@ -33,8 +33,9 @@ export function outputContentRectPt(paper: PaperSize, orientation: Orientation):
 
   return {
     x: 0,
-    // A5 竖版占满 A4 横向页左侧高度；A5 横版放在左侧并垂直居中。
-    y: (pageHeight - contentHeight) / 2,
+    // 报销场景统一贴左上：A5 纵向在 A4 纵向左上，A5 横向在 A4 横向左上。
+    // PDF 坐标原点在左下，顶齐 = pageHeight - contentHeight。
+    y: pageHeight - contentHeight,
     width: contentWidth,
     height: contentHeight,
   };
@@ -112,7 +113,7 @@ export function fitIntoRect(
   sourceWidth: number,
   sourceHeight: number,
   rect: Rect,
-  fit: 'contain' | 'stretch',
+  fit: FitMode,
   scalePercent: number,
   offsetXmm: number,
   offsetYmm: number,
@@ -141,7 +142,7 @@ export function calculateHorizontalAlignmentOffset(
   sourceWidth: number,
   sourceHeight: number,
   rect: Rect,
-  fit: 'contain' | 'stretch',
+  fit: FitMode,
   scalePercent: number,
   alignment: HorizontalAlignment,
 ): number {
