@@ -214,7 +214,9 @@ function App() {
     void loadWorkspace()
       .then((workspace) => {
         if (cancelled || !workspace || workspace.version !== 1) return;
-        const restoredSheets = workspace.layoutDefaultsVersion === 2
+        // v3 再次修正曾经以 6 mm 保存的 A5 整页。部分浏览器可能已经把 v2
+        // 标记写入 IndexedDB，但旧版面仍保留 6 mm，导致 A5 内容看起来再次缩小。
+        const restoredSheets = workspace.layoutDefaultsVersion === 3
           ? workspace.sheets
           : workspace.sheets.map((sheet) =>
               sheet.paper === 'A5' && sheet.layout === 'full' && sheet.margin === 6
@@ -249,7 +251,7 @@ function App() {
     if (!workspaceReady) return;
     void saveWorkspace({
       version: 1,
-      layoutDefaultsVersion: 2,
+      layoutDefaultsVersion: 3,
       files,
       sheets,
       selectedSheetId,
@@ -291,6 +293,15 @@ function App() {
   function updateSelectedSheet(patch: Partial<SheetConfig>) {
     if (!selectedSheet) return;
     setSheets((current) => current.map((sheet) => (sheet.id === selectedSheet.id ? { ...sheet, ...patch } : sheet)));
+  }
+
+  function updatePaper(paper: PaperSize) {
+    if (!selectedSheet) return;
+    updateSelectedSheet({
+      paper,
+      // 整页切换到 A4 / A5 时恢复满版，避免沿用旧版保存的 6 mm 边距。
+      margin: selectedSheet.layout === 'full' ? 0 : selectedSheet.margin,
+    });
   }
 
   function updateLayout(layout: LayoutMode) {
@@ -685,7 +696,7 @@ function App() {
                 <legend>纸张</legend>
                 <div className="segmented two">
                   {(['A4', 'A5'] as PaperSize[]).map((paper) => (
-                    <button type="button" className={selectedSheet.paper === paper ? 'active' : ''} key={paper} onClick={() => updateSelectedSheet({ paper })}>{paper}</button>
+                    <button type="button" className={selectedSheet.paper === paper ? 'active' : ''} key={paper} onClick={() => updatePaper(paper)}>{paper}</button>
                   ))}
                 </div>
                 <label className="field-label">方向</label>
@@ -748,6 +759,11 @@ function App() {
                         {detectedBlankPercent > 0 ? `已自动去除下方约 ${detectedBlankPercent}% 空白` : '未检测到大面积下方空白，将保留完整原稿'}
                       </div>
                     )}
+                    {selectedSheet.paper === 'A5' && selectedSourcePage && detectedPaper(selectedSourcePage.width, selectedSourcePage.height) === 'A4' && (
+                      <div className="crop-status detected">
+                        原稿页面实际为 A4（约 210 × 297 mm），输出到 A5 时会按比例缩小；生成的纸张仍是标准 A5（148 × 210 mm）。
+                      </div>
+                    )}
 
                     <label className="field-label">填充方式</label>
                     <div className="segmented two">
@@ -790,7 +806,12 @@ function App() {
 
               <div className="print-note">
                 <CheckCircle2 size={18} />
-                <div><strong>打印建议</strong><span>系统已生成标准纸张尺寸。打印对话框中请选择“实际大小 / 100%”，不要再次缩放。</span></div>
+                <div>
+                  <strong>打印建议</strong>
+                  <span>{selectedSheet.paper === 'A5'
+                    ? '当前输出为标准 A5（148 × 210 mm）。打印机纸张必须选择 A5，并选择“实际大小 / 100%”；如果打印机仍选 A4，A5 内容会显示在 A4 纸中间，看起来偏小。'
+                    : '当前输出为标准 A4（210 × 297 mm）。打印对话框中请选择 A4 和“实际大小 / 100%”，不要再次缩放。'}</span>
+                </div>
               </div>
             </div>
           )}
