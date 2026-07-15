@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { getImportFileKind, importFileTypeLabel } from './files';
-import { calculateHorizontalAlignmentOffset, calculateSlots, fitIntoRect, paperDimensionsPt, slotCount } from './layout';
+import { calculateHorizontalAlignmentOffset, calculateSlots, fitIntoRect, outputPageDimensionsPt, slotCount } from './layout';
 import { buildPrintPdf, createDemoFiles, inspectImportFile, inspectPdf } from './pdf';
 import { clearGeneratedPrintFiles, createPrintUrl } from './print';
 import { clearWorkspace, loadWorkspace, saveWorkspace } from './storage';
@@ -214,9 +214,9 @@ function App() {
     void loadWorkspace()
       .then((workspace) => {
         if (cancelled || !workspace || workspace.version !== 1) return;
-        // v3 再次修正曾经以 6 mm 保存的 A5 整页。部分浏览器可能已经把 v2
-        // 标记写入 IndexedDB，但旧版面仍保留 6 mm，导致 A5 内容看起来再次缩小。
-        const restoredSheets = workspace.layoutDefaultsVersion === 3
+        // v3 修正曾经以 6 mm 保存的 A5 整页；v4 开始 A4 / A5 只表示
+        // 内容打印尺寸，所有生成页统一使用 A4 实体纸张。旧工作区无需清空。
+        const restoredSheets = (workspace.layoutDefaultsVersion ?? 0) >= 3
           ? workspace.sheets
           : workspace.sheets.map((sheet) =>
               sheet.paper === 'A5' && sheet.layout === 'full' && sheet.margin === 6
@@ -251,7 +251,7 @@ function App() {
     if (!workspaceReady) return;
     void saveWorkspace({
       version: 1,
-      layoutDefaultsVersion: 3,
+      layoutDefaultsVersion: 4,
       files,
       sheets,
       selectedSheetId,
@@ -299,7 +299,7 @@ function App() {
     if (!selectedSheet) return;
     updateSelectedSheet({
       paper,
-      // 整页切换到 A4 / A5 时恢复满版，避免沿用旧版保存的 6 mm 边距。
+      // 整页切换 A4 / A5 打印尺寸时恢复满版，避免旧边距造成额外缩小。
       margin: selectedSheet.layout === 'full' ? 0 : selectedSheet.margin,
     });
   }
@@ -463,7 +463,7 @@ function App() {
       setSheets(nextSheets);
       setSelectedSheetId(nextSheets[0]?.id ?? null);
       setSelectedSlotIndex(0);
-      notify('演示已载入：前两份上下拼在 A4，费用报销单单独使用 A5');
+      notify('演示已载入：所有页面都使用 A4 纸，费用报销单按 A5 尺寸打印');
     } catch (error) {
       notify(error instanceof Error ? error.message : '演示文件创建失败');
     } finally {
@@ -476,7 +476,7 @@ function App() {
     setSheets(next);
     setSelectedSheetId(next[0]?.id ?? null);
     setSelectedSlotIndex(0);
-    notify('已按纸张尺寸重新智能排版');
+    notify('已按打印尺寸重新智能排版');
   }
 
   async function clearAllContent() {
@@ -503,7 +503,7 @@ function App() {
           <div className="brand-mark"><Printer size={22} strokeWidth={2.2} /></div>
           <div>
             <h1>报销打印台</h1>
-            <p>A4 / A5 凭证拼版工具</p>
+            <p>A4 纸 · A4 / A5 尺寸拼版工具</p>
           </div>
         </div>
         <div className="top-actions">
@@ -601,7 +601,7 @@ function App() {
                         <span
                           className={`paper-badge ${file.sourceType === 'image' ? 'custom' : detectedPaper(first.width, first.height).toLowerCase()}`}
                           title={file.sourceType === 'image'
-                            ? '图片没有可靠的纸张物理尺寸，导入后可在右侧选择 A4 / A5 和排版方式'
+                            ? '图片没有可靠的纸张物理尺寸，导入后可选择 A4 整页 / A5 尺寸和排版方式'
                             : `根据 PDF 可见页面尺寸判断：${pageSizeMmLabel(first.width, first.height)}`}
                         >
                           {file.sourceType === 'image'
@@ -630,7 +630,7 @@ function App() {
           <div className="canvas-toolbar">
             <div>
               <span className="eyebrow">02 · 拼版预览</span>
-              <h2>{selectedSheet ? `第 ${selectedIndex + 1} 张 · ${selectedSheet.paper} ${pageLabels[selectedSheet.layout]}` : '打印预览'}</h2>
+              <h2>{selectedSheet ? `第 ${selectedIndex + 1} 张 · A4 纸 · ${selectedSheet.paper === 'A5' ? 'A5 尺寸' : 'A4 整页'} · ${pageLabels[selectedSheet.layout]}` : '打印预览'}</h2>
             </div>
             <div className="toolbar-actions">
               <button className="icon-button" type="button" onClick={() => moveSheet(-1)} disabled={!selectedSheet || selectedIndex === 0} aria-label="打印页前移"><ChevronUp size={18} /></button>
@@ -653,7 +653,7 @@ function App() {
               <div className="blank-canvas">
                 <div className="blank-icon"><LayoutTemplate size={32} /></div>
                 <h3>从导入报销材料开始</h3>
-                <p>系统会把普通材料两份上下拼在一张 A4，检测到 A5 的 PDF 则使用 A5 纸。</p>
+                <p>系统会把普通材料两份上下拼在一张 A4；A5 材料按标准 A5 尺寸放在 A4 纸上。</p>
                 <div className="blank-actions">
                   <button className="button primary" type="button" onClick={() => inputRef.current?.click()}><Upload size={17} /> 导入材料</button>
                   <button className="button ghost" type="button" onClick={addSheet}><Plus size={17} /> 添加空白页</button>
@@ -671,7 +671,7 @@ function App() {
                 onClick={() => { setSelectedSheetId(sheet.id); setSelectedSlotIndex(0); }}
               >
                 <span>{index + 1}</span>
-                <strong>{sheet.paper}</strong>
+                <strong>{sheet.paper === 'A5' ? 'A5尺寸' : 'A4整页'}</strong>
                 <small>{pageLabels[sheet.layout]}</small>
               </button>
             ))}
@@ -689,14 +689,14 @@ function App() {
           </div>
 
           {!selectedSheet ? (
-            <div className="settings-empty">添加或选择一张打印页后，可在这里调整纸张和版位。</div>
+            <div className="settings-empty">添加或选择一张打印页后，可在这里调整打印尺寸和版位。</div>
           ) : (
             <div className="settings-content">
               <fieldset className="setting-group">
-                <legend>纸张</legend>
+                <legend>打印尺寸（实际纸张统一为 A4）</legend>
                 <div className="segmented two">
                   {(['A4', 'A5'] as PaperSize[]).map((paper) => (
-                    <button type="button" className={selectedSheet.paper === paper ? 'active' : ''} key={paper} onClick={() => updatePaper(paper)}>{paper}</button>
+                    <button type="button" className={selectedSheet.paper === paper ? 'active' : ''} key={paper} onClick={() => updatePaper(paper)}>{paper === 'A5' ? 'A5 尺寸' : 'A4 整页'}</button>
                   ))}
                 </div>
                 <label className="field-label">方向</label>
@@ -761,7 +761,7 @@ function App() {
                     )}
                     {selectedSheet.paper === 'A5' && selectedSourcePage && detectedPaper(selectedSourcePage.width, selectedSourcePage.height) === 'A4' && (
                       <div className="crop-status detected">
-                        原稿页面实际为 A4（约 210 × 297 mm），输出到 A5 时会按比例缩小；生成的纸张仍是标准 A5（148 × 210 mm）。
+                        原稿页面实际为 A4（约 210 × 297 mm），选择 A5 尺寸后内容会按比例缩小到 148 × 210 mm；生成页仍然是 A4。
                       </div>
                     )}
 
@@ -809,8 +809,8 @@ function App() {
                 <div>
                   <strong>打印建议</strong>
                   <span>{selectedSheet.paper === 'A5'
-                    ? '当前输出为标准 A5（148 × 210 mm）。打印机纸张必须选择 A5，并选择“实际大小 / 100%”；如果打印机仍选 A4，A5 内容会显示在 A4 纸中间，看起来偏小。'
-                    : '当前输出为标准 A4（210 × 297 mm）。打印对话框中请选择 A4 和“实际大小 / 100%”，不要再次缩放。'}</span>
+                    ? '实际输出纸张仍是 A4，内容按标准 A5 尺寸（148 × 210 mm）放在纸张中间。打印时请选择 A4 和“实际大小 / 100%”，不要再次缩放。'
+                    : '实际输出为标准 A4（210 × 297 mm）。打印时请选择 A4 和“实际大小 / 100%”，不要再次缩放。'}</span>
                 </div>
               </div>
             </div>
@@ -837,7 +837,7 @@ function SheetPreview({
   onSelectSlot: (index: number) => void;
   onDropItem: (sheetId: string, slotIndex: number, payload: FinPrintDragPayload) => void;
 }) {
-  const [pageWidth, pageHeight] = paperDimensionsPt(sheet.paper, sheet.orientation);
+  const [pageWidth, pageHeight] = outputPageDimensionsPt(sheet.orientation);
   const slots = calculateSlots(sheet.paper, sheet.orientation, sheet.layout, sheet.margin, sheet.gap, sheet.split);
   const aspectRatio = `${pageWidth} / ${pageHeight}`;
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -846,7 +846,7 @@ function SheetPreview({
   return (
     <div className="paper-stage">
       <div className="paper" style={{ aspectRatio }}>
-        <div className="paper-size-label">{sheet.paper} · {sheet.orientation === 'portrait' ? '纵向' : '横向'}</div>
+        <div className="paper-size-label">A4 纸 · {sheet.paper === 'A5' ? 'A5 尺寸' : 'A4 整页'} · {sheet.orientation === 'portrait' ? '纵向' : '横向'}</div>
         {slots.map((rect, index) => {
           const slot = sheet.slots[index];
           const file = slot?.source ? files.find((item) => item.id === slot.source?.fileId) : null;

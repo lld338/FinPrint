@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculateHorizontalAlignmentOffset, calculateSlots, calculateSourceCropBox, fitIntoRect, paperDimensionsPt } from './layout';
+import { calculateHorizontalAlignmentOffset, calculateSlots, calculateSourceCropBox, fitIntoRect, outputPageDimensionsPt, paperDimensionsPt } from './layout';
 
 describe('print layout', () => {
   it('creates two equal vertical A4 slots at 50%', () => {
@@ -17,10 +17,22 @@ describe('print layout', () => {
     expect(height).toBeCloseTo(595.28, 1);
   });
 
-  it('uses the complete A5 page when full-page margin is zero', () => {
+  it('always uses an A4 physical output page', () => {
+    const [width, height] = outputPageDimensionsPt('portrait');
+    expect(width).toBeCloseTo(595.28, 1);
+    expect(height).toBeCloseTo(841.89, 1);
+  });
+
+  it('centers a complete standard A5 print area on the A4 output page', () => {
+    const [pageWidth, pageHeight] = outputPageDimensionsPt('portrait');
     const [width, height] = paperDimensionsPt('A5', 'portrait');
     const [slot] = calculateSlots('A5', 'portrait', 'full', 0, 0, 50);
-    expect(slot).toEqual({ x: 0, y: 0, width, height });
+    expect(slot).toEqual({
+      x: (pageWidth - width) / 2,
+      y: (pageHeight - height) / 2,
+      width,
+      height,
+    });
   });
 
 

@@ -16,6 +16,11 @@ export function paperDimensionsPt(paper: PaperSize, orientation: Orientation): [
   return [width * MM_TO_PT, height * MM_TO_PT];
 }
 
+// FinPrint 实际只使用 A4 纸。A4 / A5 表示内容打印尺寸，而不是两种进纸纸张。
+export function outputPageDimensionsPt(orientation: Orientation): [number, number] {
+  return paperDimensionsPt('A4', orientation);
+}
+
 export function slotCount(layout: LayoutMode): number {
   return layout === 'full' ? 1 : 2;
 }
@@ -28,13 +33,17 @@ export function calculateSlots(
   gapMm: number,
   splitPercent: number,
 ): Rect[] {
-  const [pageWidth, pageHeight] = paperDimensionsPt(paper, orientation);
+  const [pageWidth, pageHeight] = outputPageDimensionsPt(orientation);
+  const [printWidth, printHeight] = paperDimensionsPt(paper, orientation);
   const margin = marginMm * MM_TO_PT;
   const gap = gapMm * MM_TO_PT;
-  const x = margin;
-  const y = margin;
-  const width = Math.max(1, pageWidth - margin * 2);
-  const height = Math.max(1, pageHeight - margin * 2);
+  // A5 打印方式是在 A4 实体纸张中保留一个标准 A5 区域；A4 则覆盖整张纸。
+  const printAreaX = (pageWidth - printWidth) / 2;
+  const printAreaY = (pageHeight - printHeight) / 2;
+  const x = printAreaX + margin;
+  const y = printAreaY + margin;
+  const width = Math.max(1, printWidth - margin * 2);
+  const height = Math.max(1, printHeight - margin * 2);
 
   if (layout === 'full') return [{ x, y, width, height }];
 

@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, clip, endPath, popGraphicsState, pushGraphicsState, rectangle, rgb } from 'pdf-lib';
 import { getDocument } from 'pdfjs-dist';
 import { getImportFileKind } from './files';
-import { calculateSlots, calculateSourceCropBox, fitIntoRect, paperDimensionsPt } from './layout';
+import { calculateSlots, calculateSourceCropBox, fitIntoRect, outputPageDimensionsPt } from './layout';
 import type { PageReference, SheetConfig, UploadedPdf } from './types';
 
 
@@ -258,7 +258,7 @@ export async function buildPrintPdf(files: UploadedPdf[], sheets: SheetConfig[])
   }
 
   for (const sheet of sheets) {
-    const [pageWidth, pageHeight] = paperDimensionsPt(sheet.paper, sheet.orientation);
+    const [pageWidth, pageHeight] = outputPageDimensionsPt(sheet.orientation);
     const outputPage = output.addPage([pageWidth, pageHeight]);
     const rects = calculateSlots(sheet.paper, sheet.orientation, sheet.layout, sheet.margin, sheet.gap, sheet.split);
 
