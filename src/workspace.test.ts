@@ -50,12 +50,13 @@ describe('workspace compatibility', () => {
     expect(restored.slots[0]).toEqual(sheet.slots[0]);
   });
 
-  it('migrates workspaces that were prematurely marked as version 8 or 9', () => {
+  it('migrates workspaces that were prematurely marked as version 8, 9, or 10', () => {
     const sheet = createSheet();
     const file = createFile(595.28, 841.89);
 
     expect(restoreLegacyA5PortraitSheets([file], [sheet], 8)[0].orientation).toBe('portrait');
     expect(restoreLegacyA5PortraitSheets([file], [sheet], 9)[0].orientation).toBe('portrait');
+    expect(restoreLegacyA5PortraitSheets([file], [sheet], 10)[0].orientation).toBe('portrait');
   });
 
   it('does not change a user-selected landscape sheet after the migration version', () => {

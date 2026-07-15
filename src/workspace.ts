@@ -2,7 +2,7 @@ import { calculateHorizontalAlignmentOffset, calculateSlots } from './layout';
 import type { HorizontalAlignment } from './layout';
 import type { SheetConfig, SlotConfig, PdfPageInfo, UploadedPdf } from './types';
 
-export const CURRENT_LAYOUT_DEFAULTS_VERSION = 10;
+export const CURRENT_LAYOUT_DEFAULTS_VERSION = 11;
 
 function remapLegacyHorizontalAlignment(
   page: PdfPageInfo,
