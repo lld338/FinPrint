@@ -469,8 +469,12 @@ function App() {
         const anchor = document.createElement('a');
         anchor.href = url;
         anchor.download = `报销打印文件_${new Date().toISOString().slice(0, 10)}.pdf`;
+        anchor.style.display = 'none';
+        // Safari、内置浏览器和部分受限窗口不会执行脱离 DOM 的下载链接。
+        document.body.appendChild(anchor);
         anchor.click();
-        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       } else {
         const url = await createPrintUrl(blob);
         if (printWindow) {
