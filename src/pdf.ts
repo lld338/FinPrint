@@ -1,7 +1,7 @@
-import { PDFDocument, StandardFonts, clip, degrees, endPath, popGraphicsState, pushGraphicsState, rectangle, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, clip, endPath, popGraphicsState, pushGraphicsState, rectangle, rgb } from 'pdf-lib';
 import { getDocument } from 'pdfjs-dist';
 import { getImportFileKind } from './files';
-import { calculateSlots, calculateSourceCropBox, dimensionsAfterQuarterTurn, fitIntoRect, outputPageDimensionsPt, placementAfterQuarterTurn, shouldRotateSourceForPrint } from './layout';
+import { calculateOutputSlots, calculateSourceCropBox, fitIntoRect, outputPageDimensionsPt } from './layout';
 import type { PageReference, SheetConfig, UploadedPdf } from './types';
 
 
@@ -260,7 +260,7 @@ export async function buildPrintPdf(files: UploadedPdf[], sheets: SheetConfig[])
   for (const sheet of sheets) {
     const [pageWidth, pageHeight] = outputPageDimensionsPt(sheet.orientation);
     const outputPage = output.addPage([pageWidth, pageHeight]);
-    const rects = calculateSlots(sheet.paper, sheet.orientation, sheet.layout, sheet.margin, sheet.gap, sheet.split);
+    const rects = calculateOutputSlots(sheet.paper, sheet.orientation, sheet.layout, sheet.margin, sheet.gap, sheet.split);
 
     for (let index = 0; index < rects.length; index += 1) {
       const slot = sheet.slots[index];
@@ -281,11 +281,9 @@ export async function buildPrintPdf(files: UploadedPdf[], sheets: SheetConfig[])
         sourcePage,
         calculateSourceCropBox(visibleBox, contentHeight, shouldTrimBottom),
       );
-      const rotateSource = shouldRotateSourceForPrint(sheet.paper, embedded.width, embedded.height);
-      const [printSourceWidth, printSourceHeight] = dimensionsAfterQuarterTurn(embedded.width, embedded.height, rotateSource);
       const placement = fitIntoRect(
-        printSourceWidth,
-        printSourceHeight,
+        embedded.width,
+        embedded.height,
         rects[index],
         slot.fit,
         slot.scale,
@@ -300,14 +298,7 @@ export async function buildPrintPdf(files: UploadedPdf[], sheets: SheetConfig[])
         clip(),
         endPath(),
       );
-      const rotatedPlacement = placementAfterQuarterTurn(placement);
-      outputPage.drawPage(embedded, rotateSource ? {
-        x: rotatedPlacement.x,
-        y: rotatedPlacement.y,
-        width: rotatedPlacement.width,
-        height: rotatedPlacement.height,
-        rotate: degrees(rotatedPlacement.rotation),
-      } : placement);
+      outputPage.drawPage(embedded, placement);
       outputPage.pushOperators(popGraphicsState());
     }
   }

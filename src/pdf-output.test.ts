@@ -1,7 +1,7 @@
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { buildPrintPdf } from './pdf';
-import type { SheetConfig, UploadedPdf } from './types';
+import type { Orientation, PaperSize, SheetConfig, UploadedPdf } from './types';
 
 async function createSourceFile(): Promise<UploadedPdf> {
   const document = await PDFDocument.create();
@@ -25,17 +25,17 @@ async function createSourceFile(): Promise<UploadedPdf> {
   };
 }
 
-function createSheet(paper: 'A4' | 'A5'): SheetConfig {
+function createSheet(paper: PaperSize, orientation: Orientation): SheetConfig {
   return {
-    id: `sheet-${paper}`,
+    id: `sheet-${paper}-${orientation}`,
     paper,
-    orientation: 'portrait',
+    orientation,
     layout: 'full',
     margin: 0,
     gap: 0,
     split: 50,
     slots: [{
-      id: `slot-${paper}`,
+      id: `slot-${paper}-${orientation}`,
       source: { fileId: 'source', pageIndex: 0 },
       fit: 'contain',
       crop: 'full',
@@ -47,15 +47,29 @@ function createSheet(paper: 'A4' | 'A5'): SheetConfig {
 }
 
 describe('PDF output paper', () => {
-  it('exports both A4 and A5 print modes as A4 physical pages', async () => {
+  it('exports A4 and A5 logical layouts as matching-orientation A4 physical pages', async () => {
     const file = await createSourceFile();
-    const result = await buildPrintPdf([file], [createSheet('A4'), createSheet('A5')]);
+    const sheets = [
+      createSheet('A4', 'portrait'),
+      createSheet('A5', 'portrait'),
+      createSheet('A4', 'landscape'),
+      createSheet('A5', 'landscape'),
+    ];
+    const result = await buildPrintPdf([file], sheets);
     const output = await PDFDocument.load(result);
 
-    expect(output.getPageCount()).toBe(2);
+    expect(output.getPageCount()).toBe(4);
+    expect(output.getPage(0).getWidth()).toBeCloseTo(595.28, 1);
+    expect(output.getPage(0).getHeight()).toBeCloseTo(841.89, 1);
+    expect(output.getPage(1).getWidth()).toBeCloseTo(595.28, 1);
+    expect(output.getPage(1).getHeight()).toBeCloseTo(841.89, 1);
+    expect(output.getPage(2).getWidth()).toBeCloseTo(841.89, 1);
+    expect(output.getPage(2).getHeight()).toBeCloseTo(595.28, 1);
+    expect(output.getPage(3).getWidth()).toBeCloseTo(841.89, 1);
+    expect(output.getPage(3).getHeight()).toBeCloseTo(595.28, 1);
+
     for (const page of output.getPages()) {
-      expect(page.getWidth()).toBeCloseTo(595.28, 1);
-      expect(page.getHeight()).toBeCloseTo(841.89, 1);
+      expect(page.getRotation().angle).toBe(0);
     }
   });
 });

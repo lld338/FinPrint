@@ -16,45 +16,26 @@ export function paperDimensionsPt(paper: PaperSize, orientation: Orientation): [
   return [width * MM_TO_PT, height * MM_TO_PT];
 }
 
-// FinPrint 实际只使用 A4 纸。A4 / A5 表示内容打印尺寸，而不是两种进纸纸张。
+// 最终打印文件统一使用 A4 实体页，方向跟随当前逻辑版面。
 export function outputPageDimensionsPt(orientation: Orientation): [number, number] {
   return paperDimensionsPt('A4', orientation);
 }
 
+// 编辑与预览使用真正的 A4/A5 逻辑版面；导出时再把完整逻辑版面平移到 A4 承载页。
+export function outputContentRectPt(paper: PaperSize, orientation: Orientation): Rect {
+  const [pageWidth, pageHeight] = outputPageDimensionsPt(orientation);
+  const [contentWidth, contentHeight] = paperDimensionsPt(paper, orientation);
 
-export const A5_SOURCE_ROTATION_DEGREES = -90;
+  if (paper === 'A4') {
+    return { x: 0, y: 0, width: contentWidth, height: contentHeight };
+  }
 
-export function shouldRotateSourceForPrint(paper: PaperSize, sourceWidth: number, sourceHeight: number): boolean {
-  return paper === 'A5' && sourceHeight > sourceWidth;
-}
-
-export function dimensionsAfterQuarterTurn(
-  sourceWidth: number,
-  sourceHeight: number,
-  rotate: boolean,
-): [number, number] {
-  return rotate ? [sourceHeight, sourceWidth] : [sourceWidth, sourceHeight];
-}
-
-export function sourceDimensionsForPrint(
-  paper: PaperSize,
-  sourceWidth: number,
-  sourceHeight: number,
-): [number, number] {
-  return dimensionsAfterQuarterTurn(
-    sourceWidth,
-    sourceHeight,
-    shouldRotateSourceForPrint(paper, sourceWidth, sourceHeight),
-  );
-}
-
-export function placementAfterQuarterTurn(placement: Rect) {
   return {
-    x: placement.x,
-    y: placement.y + placement.height,
-    width: placement.height,
-    height: placement.width,
-    rotation: A5_SOURCE_ROTATION_DEGREES,
+    x: 0,
+    // A5 竖版贴 A4 竖版左上角；A5 横版放在 A4 横版左侧并垂直居中。
+    y: orientation === 'portrait' ? pageHeight - contentHeight : (pageHeight - contentHeight) / 2,
+    width: contentWidth,
+    height: contentHeight,
   };
 }
 
@@ -70,20 +51,13 @@ export function calculateSlots(
   gapMm: number,
   splitPercent: number,
 ): Rect[] {
-  const [pageWidth, pageHeight] = outputPageDimensionsPt(orientation);
-  // A5 打印方式固定使用横版内容区，但实体输出页仍由 A4 纸方向决定。
-  const printOrientation: Orientation = paper === 'A5' ? 'landscape' : orientation;
-  const [printWidth, printHeight] = paperDimensionsPt(paper, printOrientation);
+  const [pageWidth, pageHeight] = paperDimensionsPt(paper, orientation);
   const margin = marginMm * MM_TO_PT;
   const gap = gapMm * MM_TO_PT;
-  // A5 打印方式是在 A4 实体纸张中保留一个标准 A5 区域；A4 则覆盖整张纸。
-  const printAreaX = paper === 'A5' ? 0 : (pageWidth - printWidth) / 2;
-  // 正确的 A5 模式：A4 纵向纸的上半页是一块 210 × 148 mm 的 A5 横版区域。
-  const printAreaY = paper === 'A5' ? pageHeight - printHeight : (pageHeight - printHeight) / 2;
-  const x = printAreaX + margin;
-  const y = printAreaY + margin;
-  const width = Math.max(1, printWidth - margin * 2);
-  const height = Math.max(1, printHeight - margin * 2);
+  const x = margin;
+  const y = margin;
+  const width = Math.max(1, pageWidth - margin * 2);
+  const height = Math.max(1, pageHeight - margin * 2);
 
   if (layout === 'full') return [{ x, y, width, height }];
 
@@ -107,6 +81,21 @@ export function calculateSlots(
   ];
 }
 
+export function calculateOutputSlots(
+  paper: PaperSize,
+  orientation: Orientation,
+  layout: LayoutMode,
+  marginMm: number,
+  gapMm: number,
+  splitPercent: number,
+): Rect[] {
+  const contentRect = outputContentRectPt(paper, orientation);
+  return calculateSlots(paper, orientation, layout, marginMm, gapMm, splitPercent).map((rect) => ({
+    ...rect,
+    x: rect.x + contentRect.x,
+    y: rect.y + contentRect.y,
+  }));
+}
 
 export function calculateSourceCropBox(viewBox: PageBox, contentHeight: number, trimBottom: boolean): PageBox {
   if (!trimBottom) return { ...viewBox };

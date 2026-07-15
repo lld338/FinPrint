@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { getImportFileKind, importFileTypeLabel } from './files';
-import { calculateHorizontalAlignmentOffset, calculateSlots, dimensionsAfterQuarterTurn, fitIntoRect, outputPageDimensionsPt, shouldRotateSourceForPrint, slotCount } from './layout';
+import { calculateHorizontalAlignmentOffset, calculateSlots, fitIntoRect, paperDimensionsPt, slotCount } from './layout';
 import { buildPrintPdf, createDemoFiles, inspectImportFile, inspectPdf } from './pdf';
 import { clearGeneratedPrintFiles, createPrintUrl } from './print';
 import { clearWorkspace, loadWorkspace, saveWorkspace } from './storage';
@@ -178,16 +178,11 @@ function App() {
   const selectedSlotRect = selectedSheet
     ? calculateSlots(selectedSheet.paper, selectedSheet.orientation, selectedSheet.layout, selectedSheet.margin, selectedSheet.gap, selectedSheet.split)[selectedSlotIndex]
     : null;
-  const selectedSourceDimensions = selectedSheet && selectedSlot && selectedSourcePage
-    ? dimensionsAfterQuarterTurn(
+  const selectedSourceDimensions = selectedSlot && selectedSourcePage
+    ? [
         selectedSourcePage.width,
         selectedSourcePage.height * ((selectedSlot.crop ?? 'auto') === 'auto' ? (selectedSourcePage.contentHeight ?? 1) : 1),
-        shouldRotateSourceForPrint(
-          selectedSheet.paper,
-          selectedSourcePage.width,
-          selectedSourcePage.height * ((selectedSlot.crop ?? 'auto') === 'auto' ? (selectedSourcePage.contentHeight ?? 1) : 1),
-        ),
-      )
+      ] as const
     : null;
   const horizontalAlignmentOffsets = selectedSlot && selectedSlotRect && selectedSourceDimensions
     ? {
@@ -225,8 +220,8 @@ function App() {
     void loadWorkspace()
       .then((workspace) => {
         if (cancelled || !workspace || workspace.version !== 1) return;
-        // v3 修正 A5 整页旧边距；v4 统一使用 A4 实体纸张；v5/v6 继续
-        // 修正 A5 版位。v6 使用 A4 纵向纸的上半页作为 A5 横版区域，旧工作区无需清空。
+        // 仅保留早期 A5 整页默认边距修正。纸张与方向按用户保存值原样恢复，
+        // 不再迁移或覆盖已有 A4/A5、横竖版及版位数据。
         const restoredSheets = workspace.sheets.map((sheet) => ({
           ...sheet,
           margin: (workspace.layoutDefaultsVersion ?? 0) < 3
@@ -235,9 +230,6 @@ function App() {
             && sheet.margin === 6
             ? 0
             : sheet.margin,
-          orientation: (workspace.layoutDefaultsVersion ?? 0) < 6 && sheet.paper === 'A5'
-            ? 'portrait'
-            : sheet.orientation,
         }));
         setFiles(workspace.files);
         setSheets(restoredSheets);
@@ -267,7 +259,7 @@ function App() {
     if (!workspaceReady) return;
     void saveWorkspace({
       version: 1,
-      layoutDefaultsVersion: 6,
+      layoutDefaultsVersion: 7,
       files,
       sheets,
       selectedSheetId,
@@ -313,13 +305,8 @@ function App() {
 
   function updatePaper(paper: PaperSize) {
     if (!selectedSheet) return;
-    updateSelectedSheet({
-      paper,
-      // A5 的正确打印模式为 A4 纵向纸上方的 A5 横版区域。
-      orientation: paper === 'A5' ? 'portrait' : selectedSheet.orientation,
-      // 整页切换 A4 / A5 打印尺寸时恢复满版，避免旧边距造成额外缩小。
-      margin: selectedSheet.layout === 'full' ? 0 : selectedSheet.margin,
-    });
+    // A4/A5 只改变逻辑版面尺寸；方向、版位和内容参数全部保留。
+    updateSelectedSheet({ paper });
   }
 
   function updateLayout(layout: LayoutMode) {
@@ -481,7 +468,7 @@ function App() {
       setSheets(nextSheets);
       setSelectedSheetId(nextSheets[0]?.id ?? null);
       setSelectedSlotIndex(0);
-      notify('演示已载入：费用报销单按 A5 横版打印在 A4 纸上半页');
+      notify('演示已载入：A4/A5 版面已自动安排，导出时统一使用 A4 纸');
     } catch (error) {
       notify(error instanceof Error ? error.message : '演示文件创建失败');
     } finally {
@@ -521,7 +508,7 @@ function App() {
           <div className="brand-mark"><Printer size={22} strokeWidth={2.2} /></div>
           <div>
             <h1>报销打印台</h1>
-            <p>A4 纸 · A4 整页 / A5 横版拼版工具</p>
+            <p>A4 / A5 报销材料拼版与混合打印工具</p>
           </div>
         </div>
         <div className="top-actions">
@@ -619,7 +606,7 @@ function App() {
                         <span
                           className={`paper-badge ${file.sourceType === 'image' ? 'custom' : detectedPaper(first.width, first.height).toLowerCase()}`}
                           title={file.sourceType === 'image'
-                            ? '图片没有可靠的纸张物理尺寸，导入后可选择 A4 整页 / A5 横版居左和排版方式'
+                            ? '图片没有可靠的纸张物理尺寸，导入后可选择 A4 / A5、横向 / 纵向和排版方式'
                             : `根据 PDF 可见页面尺寸判断：${pageSizeMmLabel(first.width, first.height)}`}
                         >
                           {file.sourceType === 'image'
@@ -648,7 +635,7 @@ function App() {
           <div className="canvas-toolbar">
             <div>
               <span className="eyebrow">02 · 拼版预览</span>
-              <h2>{selectedSheet ? `第 ${selectedIndex + 1} 张 · A4 纸 · ${selectedSheet.paper === 'A5' ? 'A5 横版居左（上半页）' : 'A4 整页'} · ${pageLabels[selectedSheet.layout]}` : '打印预览'}</h2>
+              <h2>{selectedSheet ? `第 ${selectedIndex + 1} 张 · ${selectedSheet.paper} ${selectedSheet.orientation === 'portrait' ? '纵向' : '横向'} · ${pageLabels[selectedSheet.layout]}` : '打印预览'}</h2>
             </div>
             <div className="toolbar-actions">
               <button className="icon-button" type="button" onClick={() => moveSheet(-1)} disabled={!selectedSheet || selectedIndex === 0} aria-label="打印页前移"><ChevronUp size={18} /></button>
@@ -671,7 +658,7 @@ function App() {
               <div className="blank-canvas">
                 <div className="blank-icon"><LayoutTemplate size={32} /></div>
                 <h3>从导入报销材料开始</h3>
-                <p>系统会把普通材料两份上下拼在一张 A4；A5 材料会横向旋转，并按 A5 横版尺寸放在 A4 纵向纸的上半页。</p>
+                <p>编辑时使用真正的 A4/A5 版面，横向或纵向只改变纸张方向，不旋转原稿内容；导出时统一放到 A4 页面。</p>
                 <div className="blank-actions">
                   <button className="button primary" type="button" onClick={() => inputRef.current?.click()}><Upload size={17} /> 导入材料</button>
                   <button className="button ghost" type="button" onClick={addSheet}><Plus size={17} /> 添加空白页</button>
@@ -689,7 +676,7 @@ function App() {
                 onClick={() => { setSelectedSheetId(sheet.id); setSelectedSlotIndex(0); }}
               >
                 <span>{index + 1}</span>
-                <strong>{sheet.paper === 'A5' ? 'A5横版' : 'A4整页'}</strong>
+                <strong>{sheet.paper}{sheet.orientation === 'portrait' ? '竖版' : '横版'}</strong>
                 <small>{pageLabels[sheet.layout]}</small>
               </button>
             ))}
@@ -711,19 +698,19 @@ function App() {
           ) : (
             <div className="settings-content">
               <fieldset className="setting-group">
-                <legend>打印尺寸（实际纸张统一为 A4）</legend>
+                <legend>纸张</legend>
                 <div className="segmented two">
                   {(['A4', 'A5'] as PaperSize[]).map((paper) => (
-                    <button type="button" className={selectedSheet.paper === paper ? 'active' : ''} key={paper} onClick={() => updatePaper(paper)}>{paper === 'A5' ? 'A5 横版居左（上半页）' : 'A4 整页'}</button>
+                    <button type="button" className={selectedSheet.paper === paper ? 'active' : ''} key={paper} onClick={() => updatePaper(paper)}>{paper}</button>
                   ))}
                 </div>
-                {selectedSheet.paper === 'A5' && <div className="position-hint">A5 模式固定使用 A4 纵向纸，上半页为 A5 横版区域；竖版原稿会自动旋转。</div>}
-                <label className="field-label">A4 纸方向</label>
+                <label className="field-label">方向</label>
                 <div className="segmented two">
                   {([['portrait', '纵向'], ['landscape', '横向']] as Array<[Orientation, string]>).map(([value, label]) => (
-                    <button type="button" className={selectedSheet.orientation === value ? 'active' : ''} key={value} onClick={() => updateSelectedSheet({ orientation: value })} disabled={selectedSheet.paper === 'A5' && value === 'landscape'}>{label}</button>
+                    <button type="button" className={selectedSheet.orientation === value ? 'active' : ''} key={value} onClick={() => updateSelectedSheet({ orientation: value })}>{label}</button>
                   ))}
                 </div>
+                <div className="position-hint">纸张和方向只改变编辑版面；原稿文字不会旋转。导出时会自动放到对应方向的 A4 承载页。</div>
               </fieldset>
 
               <fieldset className="setting-group">
@@ -778,12 +765,6 @@ function App() {
                         {detectedBlankPercent > 0 ? `已自动去除下方约 ${detectedBlankPercent}% 空白` : '未检测到大面积下方空白，将保留完整原稿'}
                       </div>
                     )}
-                    {selectedSheet.paper === 'A5' && selectedSourcePage && detectedPaper(selectedSourcePage.width, selectedSourcePage.height) === 'A4' && (
-                      <div className="crop-status detected">
-                        原稿页面实际为 A4（约 210 × 297 mm），选择 A5 模式后会自动旋转为横版，并按 210 × 148 mm 放在 A4 纵向纸的上半页；生成页仍然是 A4。
-                      </div>
-                    )}
-
                     <label className="field-label">填充方式</label>
                     <div className="segmented two">
                       {([['contain', '完整显示'], ['stretch', '铺满区域']] as Array<[FitMode, string]>).map(([value, label]) => (
@@ -828,8 +809,10 @@ function App() {
                 <div>
                   <strong>打印建议</strong>
                   <span>{selectedSheet.paper === 'A5'
-                    ? '实际输出为 A4 纵向纸，内容按 A5 横版（210 × 148 mm）放在上半页；竖版原稿会自动旋转。打印时请选择 A4、纵向和“实际大小 / 100%”。'
-                    : '实际输出为标准 A4（210 × 297 mm）。打印时请选择 A4 和“实际大小 / 100%”，不要再次缩放。'}</span>
+                    ? selectedSheet.orientation === 'portrait'
+                      ? '最终输出为 A4 纵向页，A5 竖版保持原尺寸放在左上角；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
+                      : '最终输出为 A4 横向页，A5 横版保持原尺寸放在左侧并垂直居中；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
+                    : `最终输出为标准 A4 ${selectedSheet.orientation === 'portrait' ? '纵向' : '横向'}页。打印时请选择 A4 和“实际大小 / 100%”，不要再次缩放。`}</span>
                 </div>
               </div>
             </div>
@@ -856,7 +839,7 @@ function SheetPreview({
   onSelectSlot: (index: number) => void;
   onDropItem: (sheetId: string, slotIndex: number, payload: FinPrintDragPayload) => void;
 }) {
-  const [pageWidth, pageHeight] = outputPageDimensionsPt(sheet.orientation);
+  const [pageWidth, pageHeight] = paperDimensionsPt(sheet.paper, sheet.orientation);
   const slots = calculateSlots(sheet.paper, sheet.orientation, sheet.layout, sheet.margin, sheet.gap, sheet.split);
   const aspectRatio = `${pageWidth} / ${pageHeight}`;
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
@@ -865,7 +848,7 @@ function SheetPreview({
   return (
     <div className="paper-stage">
       <div className="paper" style={{ aspectRatio }}>
-        <div className="paper-size-label">A4 纸 · {sheet.paper === 'A5' ? '上半页 A5 横版' : 'A4 整页'} · {sheet.orientation === 'portrait' ? '纵向' : '横向'}</div>
+        <div className="paper-size-label">{sheet.paper} · {sheet.orientation === 'portrait' ? '纵向' : '横向'}</div>
         {slots.map((rect, index) => {
           const slot = sheet.slots[index];
           const file = slot?.source ? files.find((item) => item.id === slot.source?.fileId) : null;
@@ -911,9 +894,7 @@ function SheetPreview({
               {page && slot ? (() => {
                 const trimBottom = (slot.crop ?? 'auto') === 'auto' && (page.contentHeight ?? 1) < 0.999;
                 const sourceHeight = page.height * (trimBottom ? (page.contentHeight ?? 1) : 1);
-                const rotateSource = shouldRotateSourceForPrint(sheet.paper, page.width, sourceHeight);
-                const [printSourceWidth, printSourceHeight] = dimensionsAfterQuarterTurn(page.width, sourceHeight, rotateSource);
-                const placement = fitIntoRect(printSourceWidth, printSourceHeight, rect, slot.fit, slot.scale, slot.offsetX, slot.offsetY);
+                const placement = fitIntoRect(page.width, sourceHeight, rect, slot.fit, slot.scale, slot.offsetX, slot.offsetY);
                 const visualLeft = ((placement.x - rect.x) / rect.width) * 100;
                 const visualTop = ((rect.y + rect.height - placement.y - placement.height) / rect.height) * 100;
                 const visualWidth = (placement.width / rect.width) * 100;
@@ -922,13 +903,7 @@ function SheetPreview({
                   <img
                     src={trimBottom ? (page.trimmedPreview ?? page.preview) : page.preview}
                     alt={`${file?.name} 第 ${(slot.source?.pageIndex ?? 0) + 1} 页`}
-                    style={rotateSource ? {
-                      left: `${visualLeft + (visualWidth - visualHeight) / 2}%`,
-                      top: `${visualTop + (visualHeight - visualWidth) / 2}%`,
-                      width: `${visualHeight}%`,
-                      height: `${visualWidth}%`,
-                      transform: 'rotate(-90deg)',
-                    } : {
+                    style={{
                       left: `${visualLeft}%`,
                       top: `${visualTop}%`,
                       width: `${visualWidth}%`,
