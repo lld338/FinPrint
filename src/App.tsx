@@ -157,6 +157,7 @@ function parseSourceKey(value: string): PageReference | null {
 
 function App() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const generateLockRef = useRef(false);
   const [files, setFiles] = useState<UploadedPdf[]>([]);
   const [sheets, setSheets] = useState<SheetConfig[]>([]);
   const [selectedSheetId, setSelectedSheetId] = useState<string | null>(null);
@@ -392,10 +393,15 @@ function App() {
   }
 
   async function generate(action: 'download' | 'print') {
+    if (generateLockRef.current) {
+      notify('正在生成打印文件，请稍候');
+      return;
+    }
     if (!sheets.length || !files.length) {
       notify('请先导入 PDF 并安排打印页');
       return;
     }
+    generateLockRef.current = true;
     const printWindow = action === 'print' ? window.open('', '_blank') : null;
     if (printWindow) printWindow.document.write('<title>正在生成打印文件…</title><p style="font-family:sans-serif;padding:24px">正在生成打印文件…</p>');
     setBusy(action === 'print' ? '正在生成打印文件…' : '正在导出 PDF…');
@@ -427,6 +433,7 @@ function App() {
       printWindow?.close();
       notify(error instanceof Error ? error.message : '生成失败，请重试');
     } finally {
+      generateLockRef.current = false;
       setBusy(null);
     }
   }
