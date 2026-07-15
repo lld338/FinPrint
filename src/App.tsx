@@ -26,7 +26,7 @@ import { calculateHorizontalAlignmentOffset, calculateSlots, fitIntoRect, paperD
 import { buildPrintPdf, createDemoFiles, inspectImportFile, inspectPdf } from './pdf';
 import { clearGeneratedPrintFiles, createPrintUrl } from './print';
 import { clearWorkspace, loadWorkspace, saveWorkspace } from './storage';
-import { restoreLegacyA5PortraitSheets } from './workspace';
+import { CURRENT_LAYOUT_DEFAULTS_VERSION, restoreLegacyA5PortraitSheets } from './workspace';
 import type {
   CropMode,
   FitMode,
@@ -169,6 +169,7 @@ function App() {
   const [dragActive, setDragActive] = useState(false);
   const [draggingFileId, setDraggingFileId] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [loadedLayoutDefaultsVersion, setLoadedLayoutDefaultsVersion] = useState<number | null>(null);
 
   const selectedIndex = Math.max(0, sheets.findIndex((sheet) => sheet.id === selectedSheetId));
   const selectedSheet = sheets[selectedIndex] ?? null;
@@ -220,9 +221,13 @@ function App() {
 
     void loadWorkspace()
       .then((workspace) => {
-        if (cancelled || !workspace || workspace.version !== 1) return;
+        if (cancelled) return;
+        if (!workspace || workspace.version !== 1) {
+          setLoadedLayoutDefaultsVersion(CURRENT_LAYOUT_DEFAULTS_VERSION);
+          return;
+        }
         // 保留早期 A5 整页边距修正，并把旧版误存为 A5 横版的纵向整页恢复为纵版。
-        // 只调整逻辑方向，材料和版位中的裁切、缩放、偏移数据全部保留。
+        // 只调整逻辑方向；材料、裁切和缩放保留，对齐按钮产生的偏移会按新纸张重新映射。
         const sheetsWithRestoredMargins = workspace.sheets.map((sheet) => ({
           ...sheet,
           margin: (workspace.layoutDefaultsVersion ?? 0) < 3
@@ -232,10 +237,11 @@ function App() {
             ? 0
             : sheet.margin,
         }));
+        const storedLayoutDefaultsVersion = workspace.layoutDefaultsVersion ?? 0;
         const restoredSheets = restoreLegacyA5PortraitSheets(
           workspace.files,
           sheetsWithRestoredMargins,
-          workspace.layoutDefaultsVersion ?? 0,
+          storedLayoutDefaultsVersion,
         );
         setFiles(workspace.files);
         setSheets(restoredSheets);
@@ -248,6 +254,7 @@ function App() {
             : restoredSheets[0]?.id ?? null,
         );
         setSelectedSlotIndex(Math.max(0, workspace.selectedSlotIndex));
+        setLoadedLayoutDefaultsVersion(storedLayoutDefaultsVersion);
       })
       .catch(() => {
         if (!cancelled) setToast('未能恢复上次内容，可继续正常使用');
@@ -262,16 +269,29 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!workspaceReady) return;
+    if (!workspaceReady || loadedLayoutDefaultsVersion === null) return;
+
+    if (loadedLayoutDefaultsVersion < CURRENT_LAYOUT_DEFAULTS_VERSION) {
+      // Fast Refresh 可能保留旧 React 状态；在写入新版本号之前再对当前状态执行一次迁移，
+      // 避免旧的 A5 横版状态抢先覆盖已经迁移好的 IndexedDB 数据。
+      const restoredSheets = restoreLegacyA5PortraitSheets(files, sheets, loadedLayoutDefaultsVersion);
+      if (restoredSheets !== sheets) {
+        setSheets(restoredSheets);
+        return;
+      }
+      setLoadedLayoutDefaultsVersion(CURRENT_LAYOUT_DEFAULTS_VERSION);
+      return;
+    }
+
     void saveWorkspace({
       version: 1,
-      layoutDefaultsVersion: 8,
+      layoutDefaultsVersion: CURRENT_LAYOUT_DEFAULTS_VERSION,
       files,
       sheets,
       selectedSheetId,
       selectedSlotIndex,
     }).catch(() => setToast('本次修改未能保存到浏览器'));
-  }, [files, selectedSheetId, selectedSlotIndex, sheets, workspaceReady]);
+  }, [files, loadedLayoutDefaultsVersion, selectedSheetId, selectedSlotIndex, sheets, workspaceReady]);
 
   function notify(message: string) {
     setToast(message);

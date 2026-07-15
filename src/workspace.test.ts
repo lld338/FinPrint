@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SheetConfig, UploadedPdf } from './types';
-import { restoreLegacyA5PortraitSheets } from './workspace';
+import { CURRENT_LAYOUT_DEFAULTS_VERSION, restoreLegacyA5PortraitSheets } from './workspace';
 
 function createFile(width: number, height: number): UploadedPdf {
   return {
@@ -50,13 +50,44 @@ describe('workspace compatibility', () => {
     expect(restored.slots[0]).toEqual(sheet.slots[0]);
   });
 
+  it('migrates workspaces that were prematurely marked as version 8 or 9', () => {
+    const sheet = createSheet();
+    const file = createFile(595.28, 841.89);
+
+    expect(restoreLegacyA5PortraitSheets([file], [sheet], 8)[0].orientation).toBe('portrait');
+    expect(restoreLegacyA5PortraitSheets([file], [sheet], 9)[0].orientation).toBe('portrait');
+  });
+
   it('does not change a user-selected landscape sheet after the migration version', () => {
     const sheet = createSheet();
     const sheets = [sheet];
-    const restored = restoreLegacyA5PortraitSheets([createFile(595.28, 841.89)], sheets, 8);
+    const restored = restoreLegacyA5PortraitSheets(
+      [createFile(595.28, 841.89)],
+      sheets,
+      CURRENT_LAYOUT_DEFAULTS_VERSION,
+    );
 
     expect(restored).toBe(sheets);
     expect(restored[0].orientation).toBe('landscape');
+  });
+
+  it('remaps a legacy left-alignment offset after restoring portrait orientation', () => {
+    const sheet = createSheet();
+    sheet.slots[0] = { ...sheet.slots[0], scale: 100, offsetX: -52.7 };
+    const [restored] = restoreLegacyA5PortraitSheets([createFile(595.28, 841.89)], [sheet], 9);
+
+    expect(restored.orientation).toBe('portrait');
+    expect(restored.slots[0].offsetX).toBeCloseTo(0, 1);
+    expect(restored.slots[0].offsetY).toBe(sheet.slots[0].offsetY);
+    expect(restored.slots[0].scale).toBe(sheet.slots[0].scale);
+  });
+
+  it('keeps the same array when an old workspace no longer needs migration', () => {
+    const sheet = { ...createSheet(), orientation: 'portrait' as const };
+    const sheets = [sheet];
+    const restored = restoreLegacyA5PortraitSheets([createFile(595.28, 841.89)], sheets, 9);
+
+    expect(restored).toBe(sheets);
   });
 
   it('keeps a landscape source in an A5 landscape sheet', () => {
