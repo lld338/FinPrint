@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.playwright-cli/
+.idea/
+.codex/
+PROJECT_CONTEXT.md
+*.tsbuildinfo
+.DS_Store
+*.local
+*.log
+
+.wrangler/
