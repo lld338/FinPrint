@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { calculateHorizontalAlignmentOffset, calculateSlots, fitIntoRect, paperDimensionsPt, slotCount } from './layout';
 import { buildPrintPdf, createDemoFiles, inspectPdf } from './pdf';
+import { clearGeneratedPrintFiles, createPrintUrl } from './print';
 import { clearWorkspace, loadWorkspace, saveWorkspace } from './storage';
 import type {
   CropMode,
@@ -386,19 +387,26 @@ function App() {
       const bytes = await buildPrintPdf(files, sheets);
       const blobBytes = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
       const blob = new Blob([blobBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
       if (action === 'download') {
+        const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
         anchor.download = `报销打印文件_${new Date().toISOString().slice(0, 10)}.pdf`;
         anchor.click();
-      } else if (printWindow) {
-        printWindow.location.href = url;
+        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
       } else {
-        window.open(url, '_blank');
+        const url = await createPrintUrl(blob);
+        if (printWindow) {
+          printWindow.location.replace(url);
+        } else {
+          window.open(url, '_blank');
+        }
       }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      notify(action === 'print' ? '打印文件已打开，请在 PDF 查看器中打印' : 'PDF 已导出');
+      notify(
+        action === 'print'
+          ? '打印文件已打开；内置浏览器无法打印时，请导出 PDF 后使用 Chrome 或系统 PDF 查看器打印'
+          : 'PDF 已导出',
+      );
     } catch (error) {
       printWindow?.close();
       notify(error instanceof Error ? error.message : '生成失败，请重试');
@@ -439,7 +447,7 @@ function App() {
     if (!window.confirm('确定清掉所有报销文件和拼版内容吗？此操作不能撤销。')) return;
 
     try {
-      await clearWorkspace();
+      await Promise.all([clearWorkspace(), clearGeneratedPrintFiles()]);
       setFiles([]);
       setSheets([]);
       setSelectedSheetId(null);

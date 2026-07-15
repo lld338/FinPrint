@@ -498,6 +498,17 @@ ports:
 
 不需要。FinPrint 没有服务器端数据库，PDF 和工作状态保存在客户端浏览器中。挂载 Nginx 目录不会备份浏览器中的工作内容。
 
+### 7. PDF 查看器里的打印按钮没有反应
+
+部分应用内置浏览器（例如 ChatGPT / Codex 内置浏览器）的 PDF 查看器可能无法调出系统打印窗口。这是内置浏览器对 PDF 打印能力的限制，不代表生成的 PDF 有问题。
+
+FinPrint 会优先使用同源打印地址，以提高内置浏览器的兼容性。如果仍然没有反应，请使用以下任一方式：
+
+- 在普通 Chrome、Edge、Safari 等浏览器中打开 FinPrint 后重新点击“生成并打印”；
+- 点击“导出 PDF”，再使用系统“预览”、Adobe Acrobat 或其他 PDF 查看器打印。
+
+为了避免打印版面被再次缩放，请在系统打印窗口中选择“实际大小”或 `100%`。
+
 ## 项目目录结构
 
 ```text
@@ -507,11 +518,14 @@ FinPrint/
 │       └── docker-publish.yml # Actions 自动构建并发布 GHCR 镜像
 ├── deploy/
 │   └── nginx.conf          # Docker 容器中的 Nginx 配置
+├── public/
+│   └── finprint-print-sw.js # 为生成的 PDF 提供同源打印地址
 ├── src/
 │   ├── App.tsx             # 主界面与交互逻辑
 │   ├── layout.ts           # 拼版尺寸与位置计算
 │   ├── layout.test.ts      # 布局单元测试
 │   ├── pdf.ts              # PDF 读取、预览、裁切与导出
+│   ├── print.ts            # 打印地址与内置浏览器兼容处理
 │   ├── storage.ts          # 浏览器 IndexedDB 持久化
 │   ├── styles.css          # 页面样式
 │   └── types.ts            # TypeScript 类型
