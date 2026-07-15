@@ -91,7 +91,7 @@ function createSheet(
     paper,
     orientation: 'portrait',
     layout,
-    margin: 6,
+    margin: layout === 'full' ? 0 : 6,
     gap: layout === 'full' ? 0 : 4,
     split: 50,
     slots: Array.from({ length: slotCount(layout) }, (_, index) => createSlot(sources[index] ?? null)),
@@ -212,9 +212,16 @@ function App() {
     void loadWorkspace()
       .then((workspace) => {
         if (cancelled || !workspace || workspace.version !== 1) return;
+        const restoredSheets = workspace.layoutDefaultsVersion === 2
+          ? workspace.sheets
+          : workspace.sheets.map((sheet) =>
+              sheet.paper === 'A5' && sheet.layout === 'full' && sheet.margin === 6
+                ? { ...sheet, margin: 0 }
+                : sheet,
+            );
         setFiles(workspace.files);
-        setSheets(workspace.sheets);
-        const selectedSheetExists = workspace.sheets.some(
+        setSheets(restoredSheets);
+        const selectedSheetExists = restoredSheets.some(
           (sheet) => sheet.id === workspace.selectedSheetId,
         );
         setSelectedSheetId(
@@ -240,6 +247,7 @@ function App() {
     if (!workspaceReady) return;
     void saveWorkspace({
       version: 1,
+      layoutDefaultsVersion: 2,
       files,
       sheets,
       selectedSheetId,
@@ -285,7 +293,15 @@ function App() {
     if (!selectedSheet) return;
     const needed = slotCount(layout);
     const nextSlots = Array.from({ length: needed }, (_, index) => selectedSheet.slots[index] ?? createSlot());
-    updateSelectedSheet({ layout, slots: nextSlots, gap: layout === 'full' ? 0 : selectedSheet.gap || 4 });
+    const margin = layout === 'full'
+      ? (selectedSheet.layout === 'full' ? selectedSheet.margin : 0)
+      : (selectedSheet.layout === 'full' && selectedSheet.margin === 0 ? 6 : selectedSheet.margin);
+    updateSelectedSheet({
+      layout,
+      slots: nextSlots,
+      margin,
+      gap: layout === 'full' ? 0 : selectedSheet.gap || 4,
+    });
     setSelectedSlotIndex(0);
   }
 

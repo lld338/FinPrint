@@ -17,6 +17,12 @@ describe('print layout', () => {
     expect(height).toBeCloseTo(595.28, 1);
   });
 
+  it('uses the complete A5 page when full-page margin is zero', () => {
+    const [width, height] = paperDimensionsPt('A5', 'portrait');
+    const [slot] = calculateSlots('A5', 'portrait', 'full', 0, 0, 50);
+    expect(slot).toEqual({ x: 0, y: 0, width, height });
+  });
+
 
   it('keeps the PDF visible CropBox instead of falling back to the full MediaBox', () => {
     const visibleBox = { left: 0, bottom: 432.875, right: 595.275, top: 841.875 };
