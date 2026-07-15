@@ -258,7 +258,7 @@ export async function buildPrintPdf(files: UploadedPdf[], sheets: SheetConfig[])
   }
 
   for (const sheet of sheets) {
-    const [pageWidth, pageHeight] = outputPageDimensionsPt(sheet.orientation);
+    const [pageWidth, pageHeight] = outputPageDimensionsPt(sheet.paper, sheet.orientation);
     const outputPage = output.addPage([pageWidth, pageHeight]);
     const rects = calculateOutputSlots(sheet.paper, sheet.orientation, sheet.layout, sheet.margin, sheet.gap, sheet.split);
 

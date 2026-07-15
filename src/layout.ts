@@ -16,14 +16,15 @@ export function paperDimensionsPt(paper: PaperSize, orientation: Orientation): [
   return [width * MM_TO_PT, height * MM_TO_PT];
 }
 
-// 最终打印文件统一使用 A4 实体页，方向跟随当前逻辑版面。
-export function outputPageDimensionsPt(orientation: Orientation): [number, number] {
-  return paperDimensionsPt('A4', orientation);
+// 最终打印文件统一使用 A4 实体页。A4 跟随自身方向；A5 为了同时容纳
+// 148 × 210 mm 竖版和 210 × 148 mm 横版，统一放在 A4 横向承载页左侧。
+export function outputPageDimensionsPt(paper: PaperSize, orientation: Orientation): [number, number] {
+  return paperDimensionsPt('A4', paper === 'A5' ? 'landscape' : orientation);
 }
 
 // 编辑与预览使用真正的 A4/A5 逻辑版面；导出时再把完整逻辑版面平移到 A4 承载页。
 export function outputContentRectPt(paper: PaperSize, orientation: Orientation): Rect {
-  const [pageWidth, pageHeight] = outputPageDimensionsPt(orientation);
+  const [pageWidth, pageHeight] = outputPageDimensionsPt(paper, orientation);
   const [contentWidth, contentHeight] = paperDimensionsPt(paper, orientation);
 
   if (paper === 'A4') {
@@ -32,8 +33,8 @@ export function outputContentRectPt(paper: PaperSize, orientation: Orientation):
 
   return {
     x: 0,
-    // A5 竖版贴 A4 竖版左上角；A5 横版放在 A4 横版左侧并垂直居中。
-    y: orientation === 'portrait' ? pageHeight - contentHeight : (pageHeight - contentHeight) / 2,
+    // A5 竖版占满 A4 横向页左侧高度；A5 横版放在左侧并垂直居中。
+    y: (pageHeight - contentHeight) / 2,
     width: contentWidth,
     height: contentHeight,
   };

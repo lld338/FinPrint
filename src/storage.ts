@@ -7,7 +7,7 @@ const STATE_KEY = 'current';
 
 export interface PersistedWorkspace {
   version: 1;
-  layoutDefaultsVersion?: 2 | 3 | 4 | 5 | 6 | 7;
+  layoutDefaultsVersion?: 2 | 3 | 4 | 5 | 6 | 7 | 8;
   files: UploadedPdf[];
   sheets: SheetConfig[];
   selectedSheetId: string | null;

@@ -26,6 +26,7 @@ import { calculateHorizontalAlignmentOffset, calculateSlots, fitIntoRect, paperD
 import { buildPrintPdf, createDemoFiles, inspectImportFile, inspectPdf } from './pdf';
 import { clearGeneratedPrintFiles, createPrintUrl } from './print';
 import { clearWorkspace, loadWorkspace, saveWorkspace } from './storage';
+import { restoreLegacyA5PortraitSheets } from './workspace';
 import type {
   CropMode,
   FitMode,
@@ -220,9 +221,9 @@ function App() {
     void loadWorkspace()
       .then((workspace) => {
         if (cancelled || !workspace || workspace.version !== 1) return;
-        // 仅保留早期 A5 整页默认边距修正。纸张与方向按用户保存值原样恢复，
-        // 不再迁移或覆盖已有 A4/A5、横竖版及版位数据。
-        const restoredSheets = workspace.sheets.map((sheet) => ({
+        // 保留早期 A5 整页边距修正，并把旧版误存为 A5 横版的纵向整页恢复为纵版。
+        // 只调整逻辑方向，材料和版位中的裁切、缩放、偏移数据全部保留。
+        const sheetsWithRestoredMargins = workspace.sheets.map((sheet) => ({
           ...sheet,
           margin: (workspace.layoutDefaultsVersion ?? 0) < 3
             && sheet.paper === 'A5'
@@ -231,6 +232,11 @@ function App() {
             ? 0
             : sheet.margin,
         }));
+        const restoredSheets = restoreLegacyA5PortraitSheets(
+          workspace.files,
+          sheetsWithRestoredMargins,
+          workspace.layoutDefaultsVersion ?? 0,
+        );
         setFiles(workspace.files);
         setSheets(restoredSheets);
         const selectedSheetExists = restoredSheets.some(
@@ -239,7 +245,7 @@ function App() {
         setSelectedSheetId(
           selectedSheetExists
             ? workspace.selectedSheetId
-            : workspace.sheets[0]?.id ?? null,
+            : restoredSheets[0]?.id ?? null,
         );
         setSelectedSlotIndex(Math.max(0, workspace.selectedSlotIndex));
       })
@@ -259,7 +265,7 @@ function App() {
     if (!workspaceReady) return;
     void saveWorkspace({
       version: 1,
-      layoutDefaultsVersion: 7,
+      layoutDefaultsVersion: 8,
       files,
       sheets,
       selectedSheetId,
@@ -710,7 +716,7 @@ function App() {
                     <button type="button" className={selectedSheet.orientation === value ? 'active' : ''} key={value} onClick={() => updateSelectedSheet({ orientation: value })}>{label}</button>
                   ))}
                 </div>
-                <div className="position-hint">纸张和方向只改变编辑版面；原稿文字不会旋转。导出时会自动放到对应方向的 A4 承载页。</div>
+                <div className="position-hint">纸张和方向只改变编辑版面；原稿文字不会旋转。A5 导出时统一放到 A4 横向承载页左侧。</div>
               </fieldset>
 
               <fieldset className="setting-group">
@@ -810,7 +816,7 @@ function App() {
                   <strong>打印建议</strong>
                   <span>{selectedSheet.paper === 'A5'
                     ? selectedSheet.orientation === 'portrait'
-                      ? '最终输出为 A4 纵向页，A5 竖版保持原尺寸放在左上角；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
+                      ? '最终输出为 A4 横向页，A5 竖版保持原尺寸放在左侧并占满纸张高度；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
                       : '最终输出为 A4 横向页，A5 横版保持原尺寸放在左侧并垂直居中；原稿不旋转。打印时请选择 A4 和“实际大小 / 100%”。'
                     : `最终输出为标准 A4 ${selectedSheet.orientation === 'portrait' ? '纵向' : '横向'}页。打印时请选择 A4 和“实际大小 / 100%”，不要再次缩放。`}</span>
                 </div>

@@ -58,23 +58,31 @@ describe('print layout', () => {
     });
   });
 
-  it('always uses an A4 physical output page in the selected orientation', () => {
-    expect(outputPageDimensionsPt('portrait')).toEqual([
+  it('uses the selected direction for A4 and an A4 landscape carrier for A5', () => {
+    expect(outputPageDimensionsPt('A4', 'portrait')).toEqual([
       210 * MM_TO_PT,
       297 * MM_TO_PT,
     ]);
-    expect(outputPageDimensionsPt('landscape')).toEqual([
+    expect(outputPageDimensionsPt('A4', 'landscape')).toEqual([
+      297 * MM_TO_PT,
+      210 * MM_TO_PT,
+    ]);
+    expect(outputPageDimensionsPt('A5', 'portrait')).toEqual([
+      297 * MM_TO_PT,
+      210 * MM_TO_PT,
+    ]);
+    expect(outputPageDimensionsPt('A5', 'landscape')).toEqual([
       297 * MM_TO_PT,
       210 * MM_TO_PT,
     ]);
   });
 
-  it('places A5 portrait at the top-left of an A4 portrait output page', () => {
+  it('places A5 portrait at the left of an A4 landscape output page', () => {
     const content = outputContentRectPt('A5', 'portrait');
     const slot = calculateOutputSlots('A5', 'portrait', 'full', 0, 0, 50)[0];
 
     expect(content.x).toBe(0);
-    expect(content.y).toBeCloseTo(87 * MM_TO_PT);
+    expect(content.y).toBeCloseTo(0);
     expect(content.width).toBeCloseTo(148 * MM_TO_PT);
     expect(content.height).toBeCloseTo(210 * MM_TO_PT);
     expect(slot.x).toBe(0);
@@ -134,5 +142,15 @@ describe('print layout', () => {
     expect(result.height).toBeCloseTo(419);
     expect(result.width).toBeLessThan(rect.width);
     expect(result.height).toBeGreaterThan(result.width);
+  });
+
+  it('fits a portrait A4 source into A5 portrait at about 148 by 209 millimeters', () => {
+    const rect = calculateOutputSlots('A5', 'portrait', 'full', 0, 0, 50)[0];
+    const result = fitIntoRect(210 * MM_TO_PT, 297 * MM_TO_PT, rect, 'contain', 100, 0, 0);
+
+    expect(result.width / MM_TO_PT).toBeCloseTo(148, 1);
+    expect(result.height / MM_TO_PT).toBeCloseTo(209.31, 1);
+    expect(result.x).toBeCloseTo(0);
+    expect(result.y / MM_TO_PT).toBeCloseTo((210 - 209.31) / 2, 1);
   });
 });
