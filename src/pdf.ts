@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, clip, endPath, popGraphicsState, pushGraphicsState, rectangle, rgb } from 'pdf-lib';
 import { getDocument } from 'pdfjs-dist';
+import { getImportFileKind } from './files';
 import { calculateSlots, calculateSourceCropBox, fitIntoRect, paperDimensionsPt } from './layout';
 import type { PageReference, SheetConfig, UploadedPdf } from './types';
 
@@ -122,11 +123,119 @@ export async function inspectPdf(file: File): Promise<UploadedPdf> {
     bytes,
     pages,
     // 按当前报销业务规则给常用材料预设打印方式。
+    sourceType: 'pdf',
     printAs: file.name.includes('杜乐乐提交的费用报销')
       ? 'A5'
       : /滴滴电子发票|滴滴出行行程报销单/.test(file.name)
         ? 'half'
         : 'auto',
+  };
+}
+
+
+const MAX_IMAGE_EDGE = 5000;
+const IMAGE_SOURCE_LONG_EDGE_PT = 720;
+
+async function loadImageSource(file: File): Promise<{
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  release: () => void;
+}> {
+  if ('createImageBitmap' in window) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        release: () => bitmap.close(),
+      };
+    } catch {
+      // 部分浏览器虽然提供 createImageBitmap，但无法读取某些本地图片，继续使用 img 回退。
+    }
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  const image = new Image();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error(`无法读取图片“${file.name}”，请转换为 JPG、PNG 或 WEBP 后重试`));
+      image.src = objectUrl;
+    });
+    return {
+      source: image,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      release: () => URL.revokeObjectURL(objectUrl),
+    };
+  } catch (error) {
+    URL.revokeObjectURL(objectUrl);
+    throw error;
+  }
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: 'image/jpeg' | 'image/png') {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('图片转换失败'))),
+      type,
+      type === 'image/jpeg' ? 0.95 : undefined,
+    );
+  });
+}
+
+async function convertImageToPdf(file: File) {
+  const image = await loadImageSource(file);
+  try {
+    if (!image.width || !image.height) throw new Error(`图片“${file.name}”尺寸无效`);
+    const renderScale = Math.min(1, MAX_IMAGE_EDGE / Math.max(image.width, image.height));
+    const canvas = window.document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.width * renderScale));
+    canvas.height = Math.max(1, Math.round(image.height * renderScale));
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) throw new Error('无法创建图片预览画布');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image.source, 0, 0, canvas.width, canvas.height);
+
+    const keepPng = file.type.toLowerCase() === 'image/png' || file.name.toLowerCase().endsWith('.png');
+    const normalizedBlob = await canvasToBlob(canvas, keepPng ? 'image/png' : 'image/jpeg');
+    const normalizedBytes = new Uint8Array(await normalizedBlob.arrayBuffer());
+    const pageScale = IMAGE_SOURCE_LONG_EDGE_PT / Math.max(canvas.width, canvas.height);
+    const pageWidth = canvas.width * pageScale;
+    const pageHeight = canvas.height * pageScale;
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([pageWidth, pageHeight]);
+    const embeddedImage = keepPng
+      ? await pdf.embedPng(normalizedBytes)
+      : await pdf.embedJpg(normalizedBytes);
+    page.drawImage(embeddedImage, { x: 0, y: 0, width: pageWidth, height: pageHeight });
+    return pdf.save();
+  } finally {
+    image.release();
+  }
+}
+
+export async function inspectImportFile(file: File): Promise<UploadedPdf> {
+  const kind = getImportFileKind(file);
+  if (kind === 'pdf') return inspectPdf(file);
+  if (kind !== 'image') throw new Error(`不支持文件“${file.name}”，请选择 PDF、JPG、PNG、WEBP 或 BMP`);
+
+  const pdfBytes = await convertImageToPdf(file);
+  const convertedBytes = pdfBytes.buffer.slice(
+    pdfBytes.byteOffset,
+    pdfBytes.byteOffset + pdfBytes.byteLength,
+  ) as ArrayBuffer;
+  const converted = new File([convertedBytes], file.name, { type: 'application/pdf' });
+  const inspected = await inspectPdf(converted);
+  return {
+    ...inspected,
+    name: file.name,
+    sourceType: 'image',
+    // 图片没有可靠的物理纸张尺寸，默认作为普通材料参与 A4 上下拼版。
+    printAs: 'auto',
   };
 }
 

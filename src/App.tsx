@@ -21,8 +21,9 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { getImportFileKind, importFileTypeLabel } from './files';
 import { calculateHorizontalAlignmentOffset, calculateSlots, fitIntoRect, paperDimensionsPt, slotCount } from './layout';
-import { buildPrintPdf, createDemoFiles, inspectPdf } from './pdf';
+import { buildPrintPdf, createDemoFiles, inspectImportFile, inspectPdf } from './pdf';
 import { clearGeneratedPrintFiles, createPrintUrl } from './print';
 import { clearWorkspace, loadWorkspace, saveWorkspace } from './storage';
 import type {
@@ -142,7 +143,7 @@ function autoLayout(files: UploadedPdf[]): SheetConfig[] {
 }
 
 function formatFileName(name: string) {
-  return name.replace(/\.pdf$/i, '');
+  return name.replace(/\.(pdf|jpe?g|jfif|png|webp|bmp)$/i, '');
 }
 
 function sourceKey(source: PageReference | null) {
@@ -262,23 +263,25 @@ function App() {
   }
 
   async function addFiles(incoming: File[]) {
-    const pdfFiles = incoming.filter((file) => file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf'));
-    if (!pdfFiles.length) {
-      notify('请选择 PDF 文件');
+    const supportedFiles = incoming.filter((file) => getImportFileKind(file));
+    const skippedCount = incoming.length - supportedFiles.length;
+    if (!supportedFiles.length) {
+      notify('请选择 PDF、JPG、PNG、WEBP 或 BMP 文件');
       return;
     }
-    setBusy(`正在读取 ${pdfFiles.length} 个 PDF…`);
+    setBusy(`正在读取 ${supportedFiles.length} 个报销材料…`);
     try {
       const inspected: UploadedPdf[] = [];
-      for (const file of pdfFiles) inspected.push(await inspectPdf(file));
+      for (const file of supportedFiles) inspected.push(await inspectImportFile(file));
       const nextFiles = [...files, ...inspected];
       setFiles(nextFiles);
       const nextSheets = autoLayout(nextFiles);
       setSheets(nextSheets);
       setSelectedSheetId((current) => current ?? nextSheets[0]?.id ?? null);
-      notify(`已导入 ${pdfFiles.length} 个文件，共 ${inspected.reduce((sum, file) => sum + file.pages.length, 0)} 页`);
+      const skippedMessage = skippedCount ? `，已跳过 ${skippedCount} 个不支持的文件` : '';
+      notify(`已导入 ${supportedFiles.length} 个文件，共 ${inspected.reduce((sum, file) => sum + file.pages.length, 0)} 页${skippedMessage}`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'PDF 读取失败');
+      notify(error instanceof Error ? error.message : '报销材料读取失败');
     } finally {
       setBusy(null);
       if (inputRef.current) inputRef.current.value = '';
@@ -398,7 +401,7 @@ function App() {
       return;
     }
     if (!sheets.length || !files.length) {
-      notify('请先导入 PDF 并安排打印页');
+      notify('请先导入报销材料并安排打印页');
       return;
     }
     generateLockRef.current = true;
@@ -517,7 +520,7 @@ function App() {
               <span className="eyebrow">01 · 原始材料</span>
               <h2>报销文件</h2>
             </div>
-            <button className="icon-button" type="button" onClick={() => inputRef.current?.click()} aria-label="添加 PDF">
+            <button className="icon-button" type="button" onClick={() => inputRef.current?.click()} aria-label="添加报销材料">
               <FilePlus2 size={18} />
             </button>
           </div>
@@ -526,7 +529,7 @@ function App() {
             ref={inputRef}
             className="visually-hidden"
             type="file"
-            accept="application/pdf,.pdf"
+            accept="application/pdf,.pdf,image/jpeg,.jpg,.jpeg,.jfif,image/png,.png,image/webp,.webp,image/bmp,.bmp"
             multiple
             onChange={(event) => void addFiles(Array.from(event.target.files ?? []))}
           />
@@ -545,8 +548,8 @@ function App() {
             }}
           >
             <span className="upload-icon"><Upload size={20} /></span>
-            <strong>拖入或选择 PDF</strong>
-            <small>支持多选，自动识别 A4 / A5</small>
+            <strong>拖入或选择 PDF / 图片</strong>
+            <small>支持 JPG、PNG、WEBP、BMP，可多选</small>
           </button>
 
           {files.length === 0 ? (
@@ -585,10 +588,14 @@ function App() {
                       <div className="file-meta">
                         <span>{file.pages.length} 页</span>
                         <span
-                          className={`paper-badge ${detectedPaper(first.width, first.height).toLowerCase()}`}
-                          title={`根据 PDF 可见页面尺寸判断：${pageSizeMmLabel(first.width, first.height)}`}
+                          className={`paper-badge ${file.sourceType === 'image' ? 'custom' : detectedPaper(first.width, first.height).toLowerCase()}`}
+                          title={file.sourceType === 'image'
+                            ? '图片没有可靠的纸张物理尺寸，导入后可在右侧选择 A4 / A5 和排版方式'
+                            : `根据 PDF 可见页面尺寸判断：${pageSizeMmLabel(first.width, first.height)}`}
                         >
-                          PDF 页面 {detectedPaper(first.width, first.height)}
+                          {file.sourceType === 'image'
+                            ? `图片 ${importFileTypeLabel(file.name)}`
+                            : `PDF 页面 ${detectedPaper(first.width, first.height)}`}
                         </span>
                       </div>
                     </div>
@@ -635,9 +642,9 @@ function App() {
               <div className="blank-canvas">
                 <div className="blank-icon"><LayoutTemplate size={32} /></div>
                 <h3>从导入报销材料开始</h3>
-                <p>系统会把普通 PDF 两份上下拼在一张 A4，检测到 A5 的文件则使用 A5 纸。</p>
+                <p>系统会把普通材料两份上下拼在一张 A4，检测到 A5 的 PDF 则使用 A5 纸。</p>
                 <div className="blank-actions">
-                  <button className="button primary" type="button" onClick={() => inputRef.current?.click()}><Upload size={17} /> 导入 PDF</button>
+                  <button className="button primary" type="button" onClick={() => inputRef.current?.click()}><Upload size={17} /> 导入材料</button>
                   <button className="button ghost" type="button" onClick={addSheet}><Plus size={17} /> 添加空白页</button>
                 </div>
               </div>
